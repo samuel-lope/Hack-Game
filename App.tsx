@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Panel, Button, ProgressBar, Icons } from './components/UI';
-import { UserState, ViewState, EntityState, LogEntry, CombatStats, Language } from './types';
+import { UserState, ViewState, EntityState, LogEntry, CombatStats, Language, TargetProfile } from './types';
 import { CONFIG, RANKS, SOFTWARE_DB, HARDWARE_DB, SKILLS_DB, ENEMY_NAMES, TRANSLATIONS, PROFILES, PASSIVES_DB } from './constants';
 
 // --- UTILS ---
@@ -974,10 +974,10 @@ export default function App() {
         const enemyProfile = PROFILES.find(p => p.id === enemy.profileId);
 
         return (
-            <div className="w-full max-w-5xl mx-auto h-[calc(100vh-60px)] flex flex-col md:grid md:grid-cols-12 gap-4 p-2 md:p-4 pb-6 overflow-hidden">
+            <div className="w-full max-w-5xl mx-auto h-[calc(100vh-60px)] flex flex-col md:grid md:grid-cols-12 gap-2 p-2 md:p-4 overflow-hidden">
                 
-                {/* Left Col: Stats */}
-                <div className="md:col-span-4 flex flex-col gap-4 order-2 md:order-1">
+                {/* Left Col: Stats - Mobile: Top (Order 1), Desktop: Left (Order 1) */}
+                <div className="md:col-span-4 flex flex-col gap-2 order-1 md:order-1 shrink-0">
                     {/* Enemy Card */}
                     <Panel borderColor="border-rose-900" bgColor="bg-black/90">
                         <div className="flex justify-between items-center mb-2">
@@ -1050,16 +1050,16 @@ export default function App() {
                     </div>
                 </div>
 
-                {/* Right Col: Logs & Controls */}
-                <div className="md:col-span-8 flex flex-col h-full gap-4 order-1 md:order-2 overflow-hidden">
+                {/* Right Col: Logs & Controls - Mobile: Bottom (Order 2), Desktop: Right (Order 2) */}
+                <div className="md:col-span-8 flex flex-col gap-2 order-2 md:order-2 min-h-0 flex-1 md:h-full">
                     
-                    {/* Terminal Log - Now takes ~2/3 of available space */}
-                    <div className="flex-2 bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-0 shadow-inner relative">
-                        <div className="absolute top-0 right-0 p-2 opacity-20 pointer-events-none">
+                    {/* Terminal Log - Fixed height for ~3-4 lines */}
+                    <div className="h-20 shrink-0 bg-black border border-zinc-800 p-2 font-mono text-xs overflow-y-auto shadow-inner relative">
+                        <div className="absolute top-0 right-0 p-1 opacity-20 pointer-events-none">
                             <Icons.Terminal />
                         </div>
                         {logs.map((l) => (
-                            <div key={l.id} className="mb-1.5 leading-relaxed">
+                            <div key={l.id} className="mb-0.5 leading-tight">
                                 <span className="text-zinc-600 mr-2">[{l.time}]</span>
                                 <span className={`
                                     ${l.type === 'error' ? 'text-rose-500 font-bold' : ''}
@@ -1075,50 +1075,52 @@ export default function App() {
                         <div ref={logsEndRef} />
                     </div>
 
-                    {/* Controls (Deck) - Now takes ~1/3 of available space */}
-                    <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
-                        {user.loadout.map(id => {
-                            const sw = SOFTWARE_DB[id];
-                            const canAfford = player.ap >= sw.cost;
-                            const onCooldown = (player.cooldowns[id] || 0) > 0;
-                            const disabled = !isPlayerTurn || !canAfford || onCooldown;
-                            
-                            // Check for effective bonus
-                            const isEffective = sw.bonuses && enemy.profileId && sw.bonuses.includes(enemy.profileId);
+                    {/* Controls (Deck) - Takes remaining space */}
+                    <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+                        <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                            {user.loadout.map(id => {
+                                const sw = SOFTWARE_DB[id];
+                                const canAfford = player.ap >= sw.cost;
+                                const onCooldown = (player.cooldowns[id] || 0) > 0;
+                                const disabled = !isPlayerTurn || !canAfford || onCooldown;
+                                
+                                // Check for effective bonus
+                                const isEffective = sw.bonuses && enemy.profileId && sw.bonuses.includes(enemy.profileId);
 
-                            return (
-                                <button 
-                                    key={id}
-                                    onClick={() => useSoftware(id)}
-                                    disabled={disabled}
-                                    className={`
-                                        relative border p-2 flex flex-col justify-between transition-all duration-100
-                                        ${disabled ? 'opacity-50 bg-zinc-900 border-zinc-800' : 'bg-black border-emerald-600 hover:bg-emerald-900/20 hover:scale-[1.02] active:scale-95 cursor-pointer'}
-                                    `}
-                                >
-                                    <div className="flex justify-between items-start">
-                                        <span className={`text-[10px] md:text-xs font-bold ${canAfford ? 'text-white' : 'text-rose-500'}`}>{sw.name}</span>
-                                        <span className="text-[9px] font-mono border border-current px-1">{sw.cost}</span>
-                                    </div>
-                                    <div className="hidden md:block text-[9px] text-zinc-400 leading-tight mt-1">{sw.desc}</div>
-                                    
-                                    {isEffective && !disabled && (
-                                        <div className="absolute -top-1 -right-1">
-                                            <span className="relative flex h-2 w-2">
-                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                                            </span>
+                                return (
+                                    <button 
+                                        key={id}
+                                        onClick={() => useSoftware(id)}
+                                        disabled={disabled}
+                                        className={`
+                                            relative border p-2 flex flex-col justify-between transition-all duration-100 min-h-[80px]
+                                            ${disabled ? 'opacity-50 bg-zinc-900 border-zinc-800' : 'bg-black border-emerald-600 hover:bg-emerald-900/20 hover:scale-[1.02] active:scale-95 cursor-pointer'}
+                                        `}
+                                    >
+                                        <div className="flex justify-between items-start">
+                                            <span className={`text-[10px] md:text-xs font-bold ${canAfford ? 'text-white' : 'text-rose-500'}`}>{sw.name}</span>
+                                            <span className="text-[9px] font-mono border border-current px-1">{sw.cost}</span>
                                         </div>
-                                    )}
+                                        <div className="hidden md:block text-[9px] text-zinc-400 leading-tight mt-1">{sw.desc}</div>
+                                        
+                                        {isEffective && !disabled && (
+                                            <div className="absolute -top-1 -right-1">
+                                                <span className="relative flex h-2 w-2">
+                                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                                </span>
+                                            </div>
+                                        )}
 
-                                    {onCooldown && (
-                                        <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-[1px]">
-                                            <span className="text-xl font-bold text-rose-500">{player.cooldowns[id]}</span>
-                                        </div>
-                                    )}
-                                </button>
-                            )
-                        })}
+                                        {onCooldown && (
+                                            <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-[1px]">
+                                                <span className="text-xl font-bold text-rose-500">{player.cooldowns[id]}</span>
+                                            </div>
+                                        )}
+                                    </button>
+                                )
+                            })}
+                        </div>
                     </div>
                 </div>
             </div>
