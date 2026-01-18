@@ -128,7 +128,7 @@ export default function App() {
         setEnemy({ 
             name, 
             hp: enemyMaxHp, 
-            maxHp: enemyMaxHp,
+            maxHp: enemyMaxHp, 
             ap: 2 + Math.floor(lvl/3), 
             maxAp: 5 + Math.floor(lvl/2), 
             shield: 0,
@@ -700,7 +700,7 @@ export default function App() {
                                 disabled={disabled}
                                 className={`
                                     relative border p-2 flex flex-col justify-between transition-all duration-100
-                                    ${disabled ? 'opacity-40 bg-zinc-900 border-zinc-800' : 'bg-black border-emerald-600 hover:bg-emerald-900/20 hover:scale-[1.02] active:scale-95 cursor-pointer'}
+                                    ${disabled ? 'opacity-50 bg-zinc-900 border-zinc-800' : 'bg-black border-emerald-600 hover:bg-emerald-900/20 hover:scale-[1.02] active:scale-95 cursor-pointer'}
                                 `}
                             >
                                 <div className="flex justify-between items-start">
