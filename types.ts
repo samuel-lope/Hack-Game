@@ -1,4 +1,4 @@
-export type ViewState = 'MENU' | 'GAME' | 'MARKET' | 'LOADOUT' | 'RESULT';
+export type ViewState = 'MENU' | 'GAME' | 'MARKET' | 'LOADOUT' | 'RESULT' | 'PROFILE_SELECT';
 
 export type Language = 'en-US' | 'pt-BR';
 
@@ -52,8 +52,27 @@ export interface EntityState {
     cooldowns: Record<string, number>;
 }
 
+export interface TargetProfile {
+    id: string;
+    name: string;
+    description: string;
+    difficulty: 'Easy' | 'Medium' | 'Hard' | 'Very Hard';
+    stats_modifier: { hp: number; ap: number; defense: number };
+    vulnerability_level: string;
+    vulnerabilities: { id: string; name: string; severity: string; description: string }[];
+}
+
+export interface PassiveTool {
+    id: string;
+    name: string;
+    price: number;
+    effect: string;
+    compatible_profiles: string[]; // 'All' or profile IDs
+}
+
 export interface UserState {
     id: string;
+    profileId?: string; // Selected Target Profile
     bits: number;
     xp: number;
     hardware: {
@@ -66,6 +85,7 @@ export interface UserState {
         defense: number;
     };
     inventory: string[];
+    passives: string[]; // List of installed PassiveTool IDs
     loadout: string[];
     stats: {
         games: number;
@@ -93,4 +113,5 @@ export interface CombatStats {
     unstableChance: number;
     shieldMult: number;
     mitigationChance: number;
+    defenseModifier: number; // From Profile
 }

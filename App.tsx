@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Panel, Button, ProgressBar, Icons } from './components/UI';
-import { UserState, ViewState, EntityState, LogEntry, CombatStats, Language } from './types';
-import { CONFIG, RANKS, SOFTWARE_DB, HARDWARE_DB, SKILLS_DB, ENEMY_NAMES, TRANSLATIONS } from './constants';
+import { UserState, ViewState, EntityState, LogEntry, CombatStats, Language, TargetProfile } from './types';
+import { CONFIG, RANKS, SOFTWARE_DB, HARDWARE_DB, SKILLS_DB, ENEMY_NAMES, TRANSLATIONS, PROFILES, PASSIVES_DB } from './constants';
 
 // --- UTILS ---
 const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1) + min);
@@ -24,6 +24,7 @@ const INITIAL_USER: UserState = {
     hardware: { cpu: 0, ram: 0, cooler: 0 },
     skills: { offense: 0, defense: 0 },
     inventory: ['PING', 'INJECT', 'FIREWALL', 'OVERCLOCK'],
+    passives: [],
     loadout: ['PING', 'INJECT', 'FIREWALL', 'OVERCLOCK'],
     stats: { games: 0, maxLevel: 0 }
 };
@@ -61,17 +62,24 @@ export default function App() {
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
-                // Simple migration check for old save structures
+                // Migrations
                 if (!parsed.skills) parsed.skills = { offense: 0, defense: 0 };
-                // Migration for ID
+                if (!parsed.passives) parsed.passives = [];
                 if (!parsed.id) {
                     parsed.id = generateUserId();
                     localStorage.setItem(CONFIG.storageKey, JSON.stringify(parsed));
                 }
                 setUser(parsed);
+                // Check if profile is selected
+                if (!parsed.profileId) {
+                    setView('PROFILE_SELECT');
+                }
             } catch (e) {
                 console.error("Save corrupted", e);
             }
+        } else {
+            // New user, go to profile select
+            setView('PROFILE_SELECT');
         }
     }, []);
 
@@ -135,13 +143,16 @@ export default function App() {
                 
                 // Basic validation
                 if (parsed.bits !== undefined && parsed.hardware && parsed.inventory) {
-                    // Ensure ID exists
                     if (!parsed.id) parsed.id = generateUserId();
+                    if (!parsed.passives) parsed.passives = [];
                     
                     saveUser(parsed);
                     triggerGlitch();
                     alert(`USER_${parsed.id} ${t.menu.successRestore}.`);
-                    // Reset file input
+                    // Redirect to profile select if needed
+                    if (!parsed.profileId) setView('PROFILE_SELECT');
+                    else setView('MENU');
+
                     if (fileInputRef.current) fileInputRef.current.value = '';
                 } else {
                     throw new Error("Invalid Save Format");
@@ -159,14 +170,30 @@ export default function App() {
         [...RANKS].reverse().find(r => user.xp >= r.xp) || RANKS[0]
     , [user.xp]);
 
+    const activeProfile = useMemo(() => 
+        PROFILES.find(p => p.id === user.profileId)
+    , [user.profileId]);
+
     const hardwareStats: CombatStats = useMemo(() => {
         const offLvl = user.skills.offense + sessionUpgrades.offense;
         const defLvl = user.skills.defense + sessionUpgrades.defense;
         
+        // Base stats from hardware
+        let baseMaxHp = 20 + (user.hardware.ram * 5);
+        let baseStartAp = 3 + Math.floor(user.hardware.cooler / 2);
+        let baseDefense = 1.0;
+
+        // Apply Profile Modifiers
+        if (activeProfile) {
+            baseMaxHp = Math.floor(baseMaxHp * activeProfile.stats_modifier.hp);
+            baseStartAp = Math.floor(baseStartAp * activeProfile.stats_modifier.ap);
+            baseDefense = activeProfile.stats_modifier.defense;
+        }
+        
         return {
-            maxHp: 20 + (user.hardware.ram * 5),
+            maxHp: baseMaxHp,
             dmgBonus: user.hardware.cpu * 1 + (sessionUpgrades.offense * 1),
-            startAp: 3 + Math.floor(user.hardware.cooler / 2),
+            startAp: baseStartAp,
             miningRate: CONFIG.miningBaseRate + (user.hardware.cpu * 0.2),
             
             critChance: 0.05 + (offLvl * 0.05),
@@ -174,9 +201,10 @@ export default function App() {
             unstableChance: Math.max(0, 0.2 - (offLvl * 0.04)),
             
             shieldMult: 1 + (defLvl * 0.1),
-            mitigationChance: 0 + (defLvl * 0.05)
+            mitigationChance: 0 + (defLvl * 0.05),
+            defenseModifier: baseDefense
         };
-    }, [user.hardware, user.skills, sessionUpgrades]);
+    }, [user.hardware, user.skills, sessionUpgrades, activeProfile]);
 
     // --- ACTIONS ---
     const addLog = (text: string, type: LogEntry['type'] = 'info') => {
@@ -187,6 +215,12 @@ export default function App() {
     const triggerGlitch = () => {
         setGlitch(true);
         setTimeout(() => setGlitch(false), 200);
+    };
+
+    const handleProfileSelect = (profileId: string) => {
+        saveUser({ ...user, profileId });
+        setView('MENU');
+        triggerGlitch();
     };
 
     const startGame = () => {
@@ -412,9 +446,18 @@ export default function App() {
             let incomingDmg = dmgBase;
             let mitigated = false;
             
+            // Calc Defense (Mitigation Chance from Skills)
             if (Math.random() < hardwareStats.mitigationChance) {
                 incomingDmg = Math.floor(incomingDmg / 2);
                 mitigated = true;
+            }
+
+            // Apply Hardware/Profile Defense Modifier (e.g., 1.2 defense = divide damage by 1.2)
+            // Or use it as damage reduction. Let's use it as a divisor for incoming damage.
+            if (hardwareStats.defenseModifier > 1.0) {
+                incomingDmg = Math.ceil(incomingDmg / hardwareStats.defenseModifier);
+            } else if (hardwareStats.defenseModifier < 1.0) {
+                incomingDmg = Math.ceil(incomingDmg * (2 - hardwareStats.defenseModifier)); // Increase damage if def < 1
             }
             
             const realDmg = Math.max(0, incomingDmg - p.shield);
@@ -427,6 +470,12 @@ export default function App() {
 
         // Player Turn Start Logic
         p.ap = Math.min(p.maxAp, p.ap + 2);
+        
+        // Passive: PATCH_MANAGER (Heal turn start)
+        if (user.passives.includes('PATCH_MANAGER')) {
+            p.hp = Math.min(p.maxHp, p.hp + 1);
+        }
+
         const miningGain = hardwareStats.miningRate;
         
         // Update states
@@ -468,13 +517,14 @@ export default function App() {
         addLog(`${t.game.livePatch}: ${label} ${t.game.patchUpdated}`, 'success');
     };
 
-    const buyItem = (type: 'hardware' | 'software' | 'skill', id: string, cost: number) => {
+    const buyItem = (type: 'hardware' | 'software' | 'skill' | 'passive', id: string, cost: number) => {
         if (user.bits < cost) return;
         
         const newData = { ...user, bits: user.bits - cost };
         if (type === 'hardware') newData.hardware = { ...newData.hardware, [id]: newData.hardware[id as keyof typeof user.hardware] + 1 };
         else if (type === 'software') newData.inventory = [...newData.inventory, id];
         else if (type === 'skill') newData.skills = { ...newData.skills, [id]: newData.skills[id as keyof typeof user.skills] + 1 };
+        else if (type === 'passive') newData.passives = [...newData.passives, id];
         
         saveUser(newData);
     };
@@ -527,9 +577,92 @@ export default function App() {
 
     // --- VIEWS ---
 
+    const renderProfileSelect = () => (
+        <div className="max-w-6xl w-full mx-auto p-4 space-y-6 animate-in fade-in duration-700">
+            <div className="text-center space-y-2 mb-8">
+                <h2 className="text-2xl md:text-3xl font-bold text-emerald-500 glow-text">{t.profileSelect.title}</h2>
+                <p className="text-zinc-400 font-mono text-sm">{t.profileSelect.subtitle}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {PROFILES.map(profile => (
+                    <Panel key={profile.id} borderColor="border-zinc-700" className="flex flex-col h-full hover:border-emerald-500 transition-colors group">
+                        <div className="flex justify-between items-start mb-2">
+                            <h3 className="font-bold text-lg text-emerald-400 group-hover:text-white transition-colors">{profile.name}</h3>
+                            <span className={`text-[10px] px-2 py-0.5 rounded border ${
+                                profile.difficulty === 'Very Hard' ? 'border-rose-900 bg-rose-900/20 text-rose-400' :
+                                profile.difficulty === 'Hard' ? 'border-amber-900 bg-amber-900/20 text-amber-400' :
+                                profile.difficulty === 'Medium' ? 'border-sky-900 bg-sky-900/20 text-sky-400' :
+                                'border-emerald-900 bg-emerald-900/20 text-emerald-400'
+                            }`}>{profile.difficulty}</span>
+                        </div>
+                        
+                        <p className="text-xs text-zinc-400 mb-4 flex-grow">{profile.description}</p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <h4 className="text-[10px] font-bold text-zinc-500 uppercase mb-1 border-b border-zinc-800 pb-1">{t.profileSelect.stats}</h4>
+                                <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono">
+                                    <div className="bg-zinc-900/50 p-1 rounded">
+                                        <div className="text-zinc-500">HP</div>
+                                        <div className={profile.stats_modifier.hp < 1 ? 'text-rose-400' : 'text-emerald-400'}>{profile.stats_modifier.hp}x</div>
+                                    </div>
+                                    <div className="bg-zinc-900/50 p-1 rounded">
+                                        <div className="text-zinc-500">AP</div>
+                                        <div className={profile.stats_modifier.ap < 1 ? 'text-rose-400' : 'text-emerald-400'}>{profile.stats_modifier.ap}x</div>
+                                    </div>
+                                    <div className="bg-zinc-900/50 p-1 rounded">
+                                        <div className="text-zinc-500">DEF</div>
+                                        <div className={profile.stats_modifier.defense < 1 ? 'text-rose-400' : 'text-emerald-400'}>{profile.stats_modifier.defense}x</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 className="text-[10px] font-bold text-rose-900 uppercase mb-1 border-b border-rose-900/30 pb-1">{t.profileSelect.vuln}</h4>
+                                <ul className="space-y-1">
+                                    {profile.vulnerabilities.map(v => (
+                                        <li key={v.id} className="text-[10px] flex justify-between">
+                                            <span className="text-rose-400">{v.name}</span>
+                                            <span className="text-zinc-500">{v.severity}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            <Button onClick={() => handleProfileSelect(profile.id)} variant="primary" className="w-full">
+                                {t.profileSelect.select}
+                            </Button>
+                        </div>
+                    </Panel>
+                ))}
+            </div>
+            
+             <div className="flex justify-center mt-8">
+                <button 
+                    onClick={() => setLang(l => l === 'en-US' ? 'pt-BR' : 'en-US')}
+                    className="text-xs font-mono text-zinc-500 hover:text-white transition"
+                >
+                    CHANGE LANGUAGE
+                </button>
+            </div>
+        </div>
+    );
+
     const renderMenu = () => (
         <div className="flex flex-col gap-6 max-w-md w-full mx-auto mt-10 p-4">
             <Panel title={t.menu.systemStatus} className="mb-4">
+                {activeProfile && (
+                     <div className="mb-4 text-center border-b border-emerald-900/30 pb-4">
+                        <div className="text-[10px] text-zinc-500 tracking-widest uppercase mb-1">{t.menu.profileInfo}</div>
+                        <div className="text-emerald-400 font-bold">{activeProfile.name}</div>
+                        <div className="text-[10px] text-zinc-500 flex justify-center gap-3 mt-1 font-mono">
+                             <span>HP: {activeProfile.stats_modifier.hp}x</span>
+                             <span>AP: {activeProfile.stats_modifier.ap}x</span>
+                             <span>DEF: {activeProfile.stats_modifier.defense}x</span>
+                        </div>
+                     </div>
+                )}
                 <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono mb-4">
                     <div className="bg-emerald-900/20 p-2 border border-emerald-900/50 rounded">
                         <div className="text-zinc-500">{t.menu.cpu}</div>
@@ -548,6 +681,17 @@ export default function App() {
                      <span className="text-rose-400 font-bold">{t.menu.atk}: Lv.{user.skills.offense}</span>
                      <span className="text-sky-400 font-bold">{t.menu.def}: Lv.{user.skills.defense}</span>
                 </div>
+                
+                {user.passives.length > 0 && (
+                    <div className="mt-4 pt-2 border-t border-emerald-900/30 text-xs">
+                        <div className="text-zinc-500 mb-1">MODULES:</div>
+                        <div className="flex flex-wrap gap-1">
+                            {user.passives.map(pid => (
+                                <span key={pid} className="bg-sky-900/30 text-sky-400 px-1 border border-sky-900/50 rounded text-[10px]">{PASSIVES_DB.find(p => p.id === pid)?.name}</span>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </Panel>
 
             <Button size="lg" onClick={startGame} className="w-full shadow-[0_0_15px_rgba(16,185,129,0.3)]">
@@ -630,29 +774,37 @@ export default function App() {
                 </div>
             </section>
 
-            {/* Skills Section */}
-            <section>
-                <h3 className="text-rose-500 border-b border-rose-900 mb-4 pb-2 font-bold flex items-center gap-2"><Icons.Zap /> {t.market.neural}</h3>
+             {/* Passive Protection Section */}
+             <section>
+                <h3 className="text-sky-500 border-b border-sky-900 mb-4 pb-2 font-bold flex items-center gap-2"><Icons.Shield /> {t.market.protection}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {Object.values(SKILLS_DB).map(skill => {
-                        const lvl = user.skills[skill.id as keyof typeof user.skills];
-                        const cost = skill.baseCost * (lvl + 1);
+                    {PASSIVES_DB.map(tool => {
+                        const owned = user.passives.includes(tool.id);
+                        const isCompatible = tool.compatible_profiles.includes('All') || (user.profileId && tool.compatible_profiles.includes(user.profileId));
+                        
                         return (
-                            <Panel key={skill.id} borderColor="border-rose-900" className="flex flex-col justify-between">
+                            <Panel key={tool.id} borderColor="border-sky-900" className={`flex flex-col justify-between ${owned ? 'opacity-50 grayscale' : ''} ${!isCompatible ? 'opacity-30' : ''}`}>
                                 <div>
-                                    <div className={`font-bold text-lg ${skill.color}`}>{skill.name} <span className="text-xs text-zinc-500 ml-2">Lv.{lvl}</span></div>
-                                    <p className="text-xs text-zinc-400 mb-2">{skill.desc}</p>
-                                    <p className="text-[10px] text-zinc-500 font-mono">{skill.stats(lvl)}</p>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="font-bold text-sky-300">{tool.name}</div>
+                                        <div className="text-[10px] border border-sky-900 px-1 text-sky-500">PASSIVE</div>
+                                    </div>
+                                    <p className="text-xs text-zinc-400 mb-2">{tool.effect}</p>
+                                    {!isCompatible && <p className="text-[10px] text-rose-500 font-mono">INCOMPATIBLE WITH SYSTEM</p>}
                                 </div>
-                                <Button 
-                                    size="sm"
-                                    onClick={() => buyItem('skill', skill.id, cost)}
-                                    disabled={user.bits < cost}
-                                    variant="danger"
-                                    className="w-full mt-4"
-                                >
-                                    {t.market.train} ({cost})
-                                </Button>
+                                {owned ? (
+                                    <div className="w-full py-2 text-center text-xs font-bold bg-zinc-900 border border-zinc-700 text-zinc-500 mt-4">{t.market.owned}</div>
+                                ) : (
+                                    <Button 
+                                        size="sm"
+                                        variant="market"
+                                        onClick={() => buyItem('passive', tool.id, tool.price)}
+                                        disabled={user.bits < tool.price || !isCompatible}
+                                        className="w-full mt-4"
+                                    >
+                                        {t.market.install} {tool.price}
+                                    </Button>
+                                )}
                             </Panel>
                         );
                     })}
@@ -685,6 +837,35 @@ export default function App() {
                                         {t.market.buy} {sw.price}
                                     </Button>
                                 )}
+                            </Panel>
+                        );
+                    })}
+                </div>
+            </section>
+
+            {/* Skills Section (Bottom) */}
+            <section>
+                <h3 className="text-rose-500 border-b border-rose-900 mb-4 pb-2 font-bold flex items-center gap-2"><Icons.Zap /> {t.market.neural}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {Object.values(SKILLS_DB).map(skill => {
+                        const lvl = user.skills[skill.id as keyof typeof user.skills];
+                        const cost = skill.baseCost * (lvl + 1);
+                        return (
+                            <Panel key={skill.id} borderColor="border-rose-900" className="flex flex-col justify-between">
+                                <div>
+                                    <div className={`font-bold text-lg ${skill.color}`}>{skill.name} <span className="text-xs text-zinc-500 ml-2">Lv.{lvl}</span></div>
+                                    <p className="text-xs text-zinc-400 mb-2">{skill.desc}</p>
+                                    <p className="text-[10px] text-zinc-500 font-mono">{skill.stats(lvl)}</p>
+                                </div>
+                                <Button 
+                                    size="sm"
+                                    onClick={() => buyItem('skill', skill.id, cost)}
+                                    disabled={user.bits < cost}
+                                    variant="danger"
+                                    className="w-full mt-4"
+                                >
+                                    {t.market.train} ({cost})
+                                </Button>
                             </Panel>
                         );
                     })}
@@ -909,6 +1090,7 @@ export default function App() {
             {view !== 'RESULT' && <Header />}
             
             <main className="flex-1 flex flex-col relative z-10">
+                {view === 'PROFILE_SELECT' && renderProfileSelect()}
                 {view === 'MENU' && renderMenu()}
                 {view === 'MARKET' && renderMarket()}
                 {view === 'LOADOUT' && renderDeck()}
