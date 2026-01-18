@@ -1053,8 +1053,8 @@ export default function App() {
                 {/* Right Col: Logs & Controls */}
                 <div className="md:col-span-8 flex flex-col h-full gap-4 order-1 md:order-2 overflow-hidden">
                     
-                    {/* Terminal Log */}
-                    <div className="flex-1 bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-25 shadow-inner relative">
+                    {/* Terminal Log - Now takes ~2/3 of available space */}
+                    <div className="flex-[2] bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-0 shadow-inner relative">
                         <div className="absolute top-0 right-0 p-2 opacity-20 pointer-events-none">
                             <Icons.Terminal />
                         </div>
@@ -1075,8 +1075,8 @@ export default function App() {
                         <div ref={logsEndRef} />
                     </div>
 
-                    {/* Controls (Deck) */}
-                    <div className="h-auto md:h-32 grid grid-cols-4 gap-2 shrink-0">
+                    {/* Controls (Deck) - Now takes ~1/3 of available space */}
+                    <div className="flex-[1] grid grid-cols-4 gap-2 min-h-0">
                         {user.loadout.map(id => {
                             const sw = SOFTWARE_DB[id];
                             const canAfford = player.ap >= sw.cost;
@@ -1176,4 +1176,3 @@ export default function App() {
         </div>
     );
 }
-
