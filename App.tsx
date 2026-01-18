@@ -650,7 +650,7 @@ export default function App() {
                             }`}>{profile.difficulty}</span>
                         </div>
                         
-                        <p className="text-xs text-zinc-400 mb-4 flex-grow">{profile.description}</p>
+                        <p className="text-xs text-zinc-400 mb-4 grow">{profile.description}</p>
 
                         <div className="space-y-4">
                             <div>
@@ -1054,7 +1054,7 @@ export default function App() {
                 <div className="md:col-span-8 flex flex-col h-full gap-4 order-1 md:order-2 overflow-hidden">
                     
                     {/* Terminal Log */}
-                    <div className="flex-1 bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-[100px] shadow-inner relative">
+                    <div className="flex-1 bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-25 shadow-inner relative">
                         <div className="absolute top-0 right-0 p-2 opacity-20 pointer-events-none">
                             <Icons.Terminal />
                         </div>
