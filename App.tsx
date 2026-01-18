@@ -905,7 +905,7 @@ export default function App() {
 
     // --- MAIN RENDER ---
     return (
-        <div className={`min-h-screen relative flex flex-col font-sans selection:bg-emerald-500/30 ${glitch ? 'glitch-active' : ''}`}>
+        <div className={`min-h-screen relative flex flex-col selection:bg-emerald-500/30 ${glitch ? 'glitch-active' : ''}`}>
             {view !== 'RESULT' && <Header />}
             
             <main className="flex-1 flex flex-col relative z-10">
