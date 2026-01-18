@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Panel, Button, ProgressBar, Icons } from './components/UI';
-import { UserState, ViewState, EntityState, LogEntry, CombatStats, Language, TargetProfile } from './types';
+import { UserState, ViewState, EntityState, LogEntry, CombatStats, Language } from './types';
 import { CONFIG, RANKS, SOFTWARE_DB, HARDWARE_DB, SKILLS_DB, ENEMY_NAMES, TRANSLATIONS, PROFILES, PASSIVES_DB } from './constants';
 
 // --- UTILS ---
@@ -1054,7 +1054,7 @@ export default function App() {
                 <div className="md:col-span-8 flex flex-col h-full gap-4 order-1 md:order-2 overflow-hidden">
                     
                     {/* Terminal Log - Now takes ~2/3 of available space */}
-                    <div className="flex-[2] bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-0 shadow-inner relative">
+                    <div className="flex-2 bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-0 shadow-inner relative">
                         <div className="absolute top-0 right-0 p-2 opacity-20 pointer-events-none">
                             <Icons.Terminal />
                         </div>
@@ -1076,7 +1076,7 @@ export default function App() {
                     </div>
 
                     {/* Controls (Deck) - Now takes ~1/3 of available space */}
-                    <div className="flex-[1] grid grid-cols-4 gap-2 min-h-0">
+                    <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
                         {user.loadout.map(id => {
                             const sw = SOFTWARE_DB[id];
                             const canAfford = player.ap >= sw.cost;
