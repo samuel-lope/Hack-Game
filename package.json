@@ -1,5 +1,5 @@
 {
-  "name": "bit-shift-evolution:-refactored",
+  "name": "bit-shift-evolution",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,8 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tailwindcss/cli": "^4.1.18",
+    "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "react": "^19.2.3"
+    "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
