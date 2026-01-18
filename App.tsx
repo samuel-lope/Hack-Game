@@ -801,8 +801,8 @@ export default function App() {
                     </div>
                 </Panel>
                 
-                <div className="text-center font-mono text-[10px] text-zinc-600 bg-black/50 p-1 border border-zinc-900">
-                    {t.game.level} {level} // {t.game.turn} {turn}
+                <div className="text-center font-mono text-xs font-bold text-emerald-100 bg-zinc-900/80 p-2 border border-emerald-900/50 rounded shadow-[0_0_10px_rgba(0,0,0,0.3)] tracking-wide">
+                    <span className="text-emerald-500">{t.game.level}</span> {level} <span className="text-zinc-600 mx-2">{'//'}</span> <span className="text-emerald-500">{t.game.turn}</span> {turn}
                 </div>
             </div>
 
