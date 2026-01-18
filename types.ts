@@ -14,6 +14,7 @@ export interface Software {
     cooldown?: number;
     desc: string;
     price?: number;
+    bonuses?: string[]; // IDs of TargetProfiles this software is effective against
 }
 
 export interface Hardware {
@@ -50,6 +51,7 @@ export interface EntityState {
     shield: number;
     name: string;
     cooldowns: Record<string, number>;
+    profileId?: string; // The architectural profile of the entity
 }
 
 export interface TargetProfile {

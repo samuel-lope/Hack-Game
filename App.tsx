@@ -23,9 +23,9 @@ const INITIAL_USER: UserState = {
     xp: 0,
     hardware: { cpu: 0, ram: 0, cooler: 0 },
     skills: { offense: 0, defense: 0 },
-    inventory: ['PING', 'INJECT', 'FIREWALL', 'OVERCLOCK'],
+    inventory: ['PING', 'FIREWALL', 'OVERCLOCK', 'SQL_INJECT', 'DDOS_PACKET', 'EXPLOIT_SMB'], // Expanded starter kit
     passives: [],
-    loadout: ['PING', 'INJECT', 'FIREWALL', 'OVERCLOCK'],
+    loadout: ['PING', 'FIREWALL', 'OVERCLOCK', 'SQL_INJECT'],
     stats: { games: 0, maxLevel: 0 }
 };
 
@@ -250,8 +250,18 @@ export default function App() {
     };
 
     const startLevel = (lvl: number) => {
-        const enemyMaxHp = Math.floor(20 * (1 + (lvl * 0.3)));
+        // Generate Enemy with Random Profile
+        const randomProfileIndex = randomInt(0, PROFILES.length - 1);
+        const enemyProfile = PROFILES[randomProfileIndex];
+
+        // Base Enemy HP scales with level
+        const baseEnemyHp = Math.floor(20 * (1 + (lvl * 0.3)));
         
+        // Apply Profile Modifiers to Enemy
+        const enemyMaxHp = Math.floor(baseEnemyHp * enemyProfile.stats_modifier.hp);
+        const enemyMaxAp = 5 + Math.floor(lvl/2); // Cap might be high, but actual usage limited by logic
+        const enemyStartAp = Math.floor((2 + Math.floor(lvl/3)) * enemyProfile.stats_modifier.ap);
+
         // Player heals if not dead, or fresh spawn
         setPlayer(prev => ({ 
             ...prev,
@@ -264,21 +274,24 @@ export default function App() {
         }));
         
         const nameIdx = Math.min(Math.floor((lvl - 1) / 2), ENEMY_NAMES.length - 1);
-        const name = `${ENEMY_NAMES[nameIdx]}_V${lvl}.0`;
+        const baseName = ENEMY_NAMES[nameIdx];
+        // Combine Generic Name with Profile Name for flavor
+        const name = `${baseName}_${enemyProfile.name.split(' ')[0].toUpperCase()}`;
 
         setEnemy({ 
             name, 
             hp: enemyMaxHp, 
             maxHp: enemyMaxHp, 
-            ap: 2 + Math.floor(lvl/3), 
-            maxAp: 5 + Math.floor(lvl/2), 
+            ap: enemyStartAp, 
+            maxAp: enemyMaxAp, 
             shield: 0,
-            cooldowns: {}
+            cooldowns: {},
+            profileId: enemyProfile.id // Assign the random profile
         });
 
         setTurn(1);
         setIsPlayerTurn(true);
-        addLog(`${t.game.targetLocked}: ${name}. ${t.game.connectionEst}.`, 'system');
+        addLog(`${t.game.targetLocked}: ${name} [${enemyProfile.difficulty}].`, 'system');
     };
 
     const handleWin = (currentLevel: number) => {
@@ -331,6 +344,7 @@ export default function App() {
         let logMsg = '';
         let isCrit = false;
         let isUnstable = false;
+        let isBonus = false;
 
         // Apply Cooldown
         if (sw.cooldown) {
@@ -366,9 +380,17 @@ export default function App() {
             let dmg = 0;
             const range = sw.val as [number, number];
 
+            // Calculate Base Damage
+            dmg = rollDamage(range[0], range[1]);
+
+            // Check for BONUS against Enemy Profile
+            if (sw.bonuses && enemy.profileId && sw.bonuses.includes(enemy.profileId)) {
+                dmg = Math.floor(dmg * 1.5);
+                isBonus = true;
+            }
+
             if (sw.type === 'risk') {
                 if (Math.random() > 0.3) {
-                    dmg = rollDamage(range[0], range[1]);
                     const realDmg = Math.max(0, dmg - newE.shield);
                     newE.shield = Math.max(0, newE.shield - dmg);
                     newE.hp -= realDmg;
@@ -380,7 +402,6 @@ export default function App() {
                     triggerGlitch();
                 }
             } else {
-                dmg = rollDamage(range[0], range[1]);
                 let realDmg = dmg;
                 
                 if (sw.type !== 'pierce') {
@@ -403,11 +424,12 @@ export default function App() {
         }
         
         if (isCrit) logMsg = `CRITICAL! ` + logMsg;
+        if (isBonus) logMsg = `${t.game.effective} ` + logMsg;
         if (isUnstable) logMsg = `UNSTABLE... ` + logMsg;
 
         setPlayer(newP);
         setEnemy(newE);
-        addLog(`> ${sw.name}: ${logMsg}`, sw.type === 'risk' && logMsg.includes('FAILURE') ? 'error' : 'success');
+        addLog(`> ${sw.name}: ${logMsg}`, sw.type === 'risk' && logMsg.includes('FAILURE') ? 'error' : (isBonus ? 'warning' : 'success'));
 
         if (newE.hp <= 0) {
             handleWin(level);
@@ -436,42 +458,73 @@ export default function App() {
 
         // Enemy AI
         const dmgBase = randomInt(3 + Math.floor(level * 0.8), 6 + level);
-        let action = '';
+        let actionLog = '';
+        let actionType: LogEntry['type'] = 'warning';
 
-        if (e.hp < e.maxHp * 0.3 && e.ap >= 2 && e.shield === 0) {
-            e.shield += 5 + level;
-            e.ap -= 2;
-            action = 'Defensive Protocols initiated.';
-        } else {
-            let incomingDmg = dmgBase;
+        // Helper: Apply Damage to Player
+        const applyDamage = (rawDmg: number) => {
+            let incoming = rawDmg;
             let mitigated = false;
             
-            // Calc Defense (Mitigation Chance from Skills)
+            // Mitigation Chance
             if (Math.random() < hardwareStats.mitigationChance) {
-                incomingDmg = Math.floor(incomingDmg / 2);
+                incoming = Math.floor(incoming / 2);
                 mitigated = true;
             }
 
-            // Apply Hardware/Profile Defense Modifier (e.g., 1.2 defense = divide damage by 1.2)
-            // Or use it as damage reduction. Let's use it as a divisor for incoming damage.
+            // Defense Modifier (Profile/Hardware)
             if (hardwareStats.defenseModifier > 1.0) {
-                incomingDmg = Math.ceil(incomingDmg / hardwareStats.defenseModifier);
+                incoming = Math.ceil(incoming / hardwareStats.defenseModifier);
             } else if (hardwareStats.defenseModifier < 1.0) {
-                incomingDmg = Math.ceil(incomingDmg * (2 - hardwareStats.defenseModifier)); // Increase damage if def < 1
+                incoming = Math.ceil(incoming * (2 - hardwareStats.defenseModifier)); 
             }
-            
-            const realDmg = Math.max(0, incomingDmg - p.shield);
-            p.shield = Math.max(0, p.shield - incomingDmg);
+
+            const realDmg = Math.max(0, incoming - p.shield);
+            p.shield = Math.max(0, p.shield - incoming);
             p.hp -= realDmg;
-            
-            action = `Attack received: ${realDmg} DMG${mitigated ? ' [MITIGATED]' : ''}.`;
             if (realDmg > 0) triggerGlitch();
+            
+            return { realDmg, mitigated };
+        };
+
+        // Decision Tree
+        if (e.hp < e.maxHp * 0.3 && e.shield === 0 && e.ap >= 2) {
+            // DEFENSE
+            const shieldVal = 5 + Math.floor(level * 1.5);
+            e.shield += shieldVal;
+            e.ap -= 2;
+            actionLog = `${t.game.enemyAction.defense} (+${shieldVal})`;
+            actionType = 'info';
+        } 
+        else if (p.ap >= 3 && e.ap >= 3 && Math.random() > 0.3) {
+            // DISRUPTION (Drain)
+            const drainAmt = 2;
+            p.ap = Math.max(0, p.ap - drainAmt);
+            const { realDmg } = applyDamage(Math.floor(dmgBase * 0.5));
+            e.ap -= 3;
+            actionLog = `${t.game.enemyAction.drain} (-${drainAmt} AP, ${realDmg} DMG)`;
+        }
+        else if (e.ap >= 4 && Math.random() > 0.4) {
+            // HEAVY ATTACK
+            const { realDmg, mitigated } = applyDamage(Math.floor(dmgBase * 1.5));
+            e.ap -= 4;
+            actionLog = `${t.game.enemyAction.heavy} (${realDmg} DMG${mitigated ? '!' : ''})`;
+            actionType = 'error';
+        }
+        else if (e.ap >= 2) {
+            // STANDARD ATTACK
+            const { realDmg, mitigated } = applyDamage(dmgBase);
+            e.ap -= 2;
+            actionLog = `${t.game.enemyAction.attack} (${realDmg} DMG${mitigated ? ' [MITIGATED]' : ''})`;
+        } 
+        else {
+            // WAIT / CHARGE
+            actionLog = t.game.enemyAction.wait;
+            actionType = 'info';
         }
 
         // Player Turn Start Logic
-        p.ap = Math.min(p.maxAp, p.ap + 2);
-        
-        // Passive: PATCH_MANAGER (Heal turn start)
+        p.ap = Math.min(p.maxAp, p.ap + 2); // Regen
         if (user.passives.includes('PATCH_MANAGER')) {
             p.hp = Math.min(p.maxHp, p.hp + 1);
         }
@@ -484,7 +537,7 @@ export default function App() {
         setPlayer(p);
         setEnemy(e);
         
-        addLog(action, action.includes('MITIGATED') ? 'info' : 'warning');
+        addLog(`${e.name}: ${actionLog}`, actionType);
         addLog(`${t.game.miningRoutine}: +${miningGain.toFixed(1)} BITS`, 'system');
 
         if (p.hp <= 0) {
@@ -917,137 +970,160 @@ export default function App() {
         </div>
     );
 
-    const renderCombat = () => (
-        <div className="w-full max-w-5xl mx-auto h-[calc(100vh-60px)] flex flex-col md:grid md:grid-cols-12 gap-4 p-2 md:p-4 pb-6 overflow-hidden">
-            
-            {/* Left Col: Stats */}
-            <div className="md:col-span-4 flex flex-col gap-4 order-2 md:order-1">
-                {/* Enemy Card */}
-                <Panel borderColor="border-rose-900" bgColor="bg-black/90">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-rose-500 font-bold flex items-center gap-2"><Icons.User/> {enemy.name}</span>
-                        {enemy.shield > 0 && <span className="text-[10px] bg-rose-900/20 px-2 py-0.5 rounded border border-rose-900 text-rose-300"><Icons.Shield /> {enemy.shield}</span>}
-                    </div>
-                    <ProgressBar current={enemy.hp} max={enemy.maxHp} color="bg-rose-600" label={t.game.integrity} showValue={true} />
-                    <div className="flex gap-1 mt-2 justify-end">
-                         {/* Enemy AP Visualization */}
-                        {[...Array(enemy.maxAp)].map((_, i) => (
-                             <div key={i} className={`w-2 h-2 rounded-full ${i < enemy.ap ? 'bg-rose-500' : 'bg-rose-900/30'}`}></div>
-                        ))}
-                    </div>
-                </Panel>
+    const renderCombat = () => {
+        const enemyProfile = PROFILES.find(p => p.id === enemy.profileId);
 
-                {/* Player Card */}
-                <Panel borderColor="border-emerald-600" bgColor="bg-black/90" className="shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-emerald-500 font-bold flex items-center gap-2"><Icons.Terminal/> USER_[{user.id}]</span>
-                        {player.shield > 0 && <span className="text-[10px] bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-900 text-emerald-300"><Icons.Shield /> {player.shield}</span>}
-                    </div>
-                    
-                    <div className="space-y-3">
-                        <ProgressBar current={player.hp} max={player.maxHp} color="bg-emerald-500" label={t.game.integrity} />
+        return (
+            <div className="w-full max-w-5xl mx-auto h-[calc(100vh-60px)] flex flex-col md:grid md:grid-cols-12 gap-4 p-2 md:p-4 pb-6 overflow-hidden">
+                
+                {/* Left Col: Stats */}
+                <div className="md:col-span-4 flex flex-col gap-4 order-2 md:order-1">
+                    {/* Enemy Card */}
+                    <Panel borderColor="border-rose-900" bgColor="bg-black/90">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-rose-500 font-bold flex items-center gap-2"><Icons.User/> {enemy.name}</span>
+                            {enemy.shield > 0 && <span className="text-[10px] bg-rose-900/20 px-2 py-0.5 rounded border border-rose-900 text-rose-300"><Icons.Shield /> {enemy.shield}</span>}
+                        </div>
+                        {enemyProfile && (
+                            <div className="text-[10px] text-zinc-500 mb-2 flex items-center gap-2">
+                                <span className="border border-rose-900/50 px-1 rounded text-rose-400">{enemyProfile.name}</span>
+                                <span className="text-zinc-600">|</span>
+                                <span>DEF: {enemyProfile.stats_modifier.defense}x</span>
+                            </div>
+                        )}
+                        <ProgressBar current={enemy.hp} max={enemy.maxHp} color="bg-rose-600" label={t.game.integrity} showValue={true} />
+                        <div className="flex gap-1 mt-2 justify-end">
+                             {/* Enemy AP Visualization */}
+                            {[...Array(enemy.maxAp)].map((_, i) => (
+                                 <div key={i} className={`w-2 h-2 rounded-full ${i < enemy.ap ? 'bg-rose-500' : 'bg-rose-900/30'}`}></div>
+                            ))}
+                        </div>
+                    </Panel>
+
+                    {/* Player Card */}
+                    <Panel borderColor="border-emerald-600" bgColor="bg-black/90" className="shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-emerald-500 font-bold flex items-center gap-2"><Icons.Terminal/> USER_[{user.id}]</span>
+                            {player.shield > 0 && <span className="text-[10px] bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-900 text-emerald-300"><Icons.Shield /> {player.shield}</span>}
+                        </div>
                         
-                        <div>
-                            <div className="text-[10px] text-emerald-700 mb-1 font-mono">{t.game.bandwidth}</div>
-                            <div className="flex gap-1 h-4">
-                                {[...Array(player.maxAp)].map((_, i) => (
-                                    <div key={i} className={`flex-1 border border-emerald-800 transition-all ${i < player.ap ? 'bg-amber-400 shadow-[0_0_5px_rgba(251,191,36,0.5)]' : 'bg-transparent'}`}></div>
-                                ))}
+                        <div className="space-y-3">
+                            <ProgressBar current={player.hp} max={player.maxHp} color="bg-emerald-500" label={t.game.integrity} />
+                            
+                            <div>
+                                <div className="text-[10px] text-emerald-700 mb-1 font-mono">{t.game.bandwidth}</div>
+                                <div className="flex gap-1 h-4">
+                                    {[...Array(player.maxAp)].map((_, i) => (
+                                        <div key={i} className={`flex-1 border border-emerald-800 transition-all ${i < player.ap ? 'bg-amber-400 shadow-[0_0_5px_rgba(251,191,36,0.5)]' : 'bg-transparent'}`}></div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </Panel>
+                    </Panel>
 
-                {/* Live Patching */}
-                <Panel borderColor="border-amber-900/50" title={t.game.livePatch} className="text-center">
-                    <div className="flex gap-2">
-                        {[
-                            { id: 'offense', label: t.game.atk, color: 'text-rose-400', border: 'border-rose-900' },
-                            { id: 'defense', label: t.game.def, color: 'text-sky-400', border: 'border-sky-900' }
-                        ].map((item) => {
-                            const cost = 10 * (sessionUpgrades[item.id as 'offense'] + 1);
-                            const canAfford = (user.bits + sessionBits) >= cost;
+                    {/* Live Patching */}
+                    <Panel borderColor="border-amber-900/50" title={t.game.livePatch} className="text-center">
+                        <div className="flex gap-2">
+                            {[
+                                { id: 'offense', label: t.game.atk, color: 'text-rose-400', border: 'border-rose-900' },
+                                { id: 'defense', label: t.game.def, color: 'text-sky-400', border: 'border-sky-900' }
+                            ].map((item) => {
+                                const cost = 10 * (sessionUpgrades[item.id as 'offense'] + 1);
+                                const canAfford = (user.bits + sessionBits) >= cost;
+                                return (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => buySessionUpgrade(item.id as 'offense'|'defense')}
+                                        disabled={!canAfford || !isPlayerTurn}
+                                        className={`flex-1 border ${item.border} p-2 transition active:scale-95 disabled:opacity-30 hover:bg-white/5`}
+                                    >
+                                        <div className={`text-xs font-bold ${item.color}`}>{item.label} <span className="text-[9px]">Lv.{sessionUpgrades[item.id as 'offense']}</span></div>
+                                        <div className="text-[10px] text-zinc-500 mt-1">{cost} {t.game.bits}</div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </Panel>
+                    
+                    <div className="text-center font-mono text-xs font-bold text-emerald-100 bg-zinc-900/80 p-2 border border-emerald-900/50 rounded shadow-[0_0_10px_rgba(0,0,0,0.3)] tracking-wide">
+                        <span className="text-emerald-500">{t.game.level}</span> {level} <span className="text-zinc-600 mx-2">{'//'}</span> <span className="text-emerald-500">{t.game.turn}</span> {turn}
+                    </div>
+                </div>
+
+                {/* Right Col: Logs & Controls */}
+                <div className="md:col-span-8 flex flex-col h-full gap-4 order-1 md:order-2 overflow-hidden">
+                    
+                    {/* Terminal Log */}
+                    <div className="flex-1 bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-[100px] shadow-inner relative">
+                        <div className="absolute top-0 right-0 p-2 opacity-20 pointer-events-none">
+                            <Icons.Terminal />
+                        </div>
+                        {logs.map((l) => (
+                            <div key={l.id} className="mb-1.5 leading-relaxed">
+                                <span className="text-zinc-600 mr-2">[{l.time}]</span>
+                                <span className={`
+                                    ${l.type === 'error' ? 'text-rose-500 font-bold' : ''}
+                                    ${l.type === 'success' ? 'text-emerald-400' : ''}
+                                    ${l.type === 'warning' ? 'text-amber-400' : ''}
+                                    ${l.type === 'system' ? 'text-violet-400' : ''}
+                                    ${l.type === 'info' ? 'text-zinc-300' : ''}
+                                `}>
+                                    {l.type === 'info' ? '' : `> `}{l.text}
+                                </span>
+                            </div>
+                        ))}
+                        <div ref={logsEndRef} />
+                    </div>
+
+                    {/* Controls (Deck) */}
+                    <div className="h-auto md:h-32 grid grid-cols-4 gap-2 shrink-0">
+                        {user.loadout.map(id => {
+                            const sw = SOFTWARE_DB[id];
+                            const canAfford = player.ap >= sw.cost;
+                            const onCooldown = (player.cooldowns[id] || 0) > 0;
+                            const disabled = !isPlayerTurn || !canAfford || onCooldown;
+                            
+                            // Check for effective bonus
+                            const isEffective = sw.bonuses && enemy.profileId && sw.bonuses.includes(enemy.profileId);
+
                             return (
-                                <button
-                                    key={item.id}
-                                    onClick={() => buySessionUpgrade(item.id as 'offense'|'defense')}
-                                    disabled={!canAfford || !isPlayerTurn}
-                                    className={`flex-1 border ${item.border} p-2 transition active:scale-95 disabled:opacity-30 hover:bg-white/5`}
+                                <button 
+                                    key={id}
+                                    onClick={() => useSoftware(id)}
+                                    disabled={disabled}
+                                    className={`
+                                        relative border p-2 flex flex-col justify-between transition-all duration-100
+                                        ${disabled ? 'opacity-50 bg-zinc-900 border-zinc-800' : 'bg-black border-emerald-600 hover:bg-emerald-900/20 hover:scale-[1.02] active:scale-95 cursor-pointer'}
+                                    `}
                                 >
-                                    <div className={`text-xs font-bold ${item.color}`}>{item.label} <span className="text-[9px]">Lv.{sessionUpgrades[item.id as 'offense']}</span></div>
-                                    <div className="text-[10px] text-zinc-500 mt-1">{cost} {t.game.bits}</div>
+                                    <div className="flex justify-between items-start">
+                                        <span className={`text-[10px] md:text-xs font-bold ${canAfford ? 'text-white' : 'text-rose-500'}`}>{sw.name}</span>
+                                        <span className="text-[9px] font-mono border border-current px-1">{sw.cost}</span>
+                                    </div>
+                                    <div className="hidden md:block text-[9px] text-zinc-400 leading-tight mt-1">{sw.desc}</div>
+                                    
+                                    {isEffective && !disabled && (
+                                        <div className="absolute -top-1 -right-1">
+                                            <span className="relative flex h-2 w-2">
+                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {onCooldown && (
+                                        <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-[1px]">
+                                            <span className="text-xl font-bold text-rose-500">{player.cooldowns[id]}</span>
+                                        </div>
+                                    )}
                                 </button>
-                            );
+                            )
                         })}
                     </div>
-                </Panel>
-                
-                <div className="text-center font-mono text-xs font-bold text-emerald-100 bg-zinc-900/80 p-2 border border-emerald-900/50 rounded shadow-[0_0_10px_rgba(0,0,0,0.3)] tracking-wide">
-                    <span className="text-emerald-500">{t.game.level}</span> {level} <span className="text-zinc-600 mx-2">{'//'}</span> <span className="text-emerald-500">{t.game.turn}</span> {turn}
                 </div>
             </div>
-
-            {/* Right Col: Logs & Controls */}
-            <div className="md:col-span-8 flex flex-col h-full gap-4 order-1 md:order-2 overflow-hidden">
-                
-                {/* Terminal Log */}
-                <div className="flex-1 bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-[100px] shadow-inner relative">
-                    <div className="absolute top-0 right-0 p-2 opacity-20 pointer-events-none">
-                        <Icons.Terminal />
-                    </div>
-                    {logs.map((l) => (
-                        <div key={l.id} className="mb-1.5 leading-relaxed">
-                            <span className="text-zinc-600 mr-2">[{l.time}]</span>
-                            <span className={`
-                                ${l.type === 'error' ? 'text-rose-500 font-bold' : ''}
-                                ${l.type === 'success' ? 'text-emerald-400' : ''}
-                                ${l.type === 'warning' ? 'text-amber-400' : ''}
-                                ${l.type === 'system' ? 'text-violet-400' : ''}
-                                ${l.type === 'info' ? 'text-zinc-300' : ''}
-                            `}>
-                                {l.type === 'info' ? '' : `> `}{l.text}
-                            </span>
-                        </div>
-                    ))}
-                    <div ref={logsEndRef} />
-                </div>
-
-                {/* Controls (Deck) */}
-                <div className="h-auto md:h-32 grid grid-cols-4 gap-2 shrink-0">
-                    {user.loadout.map(id => {
-                        const sw = SOFTWARE_DB[id];
-                        const canAfford = player.ap >= sw.cost;
-                        const onCooldown = (player.cooldowns[id] || 0) > 0;
-                        const disabled = !isPlayerTurn || !canAfford || onCooldown;
-
-                        return (
-                            <button 
-                                key={id}
-                                onClick={() => useSoftware(id)}
-                                disabled={disabled}
-                                className={`
-                                    relative border p-2 flex flex-col justify-between transition-all duration-100
-                                    ${disabled ? 'opacity-50 bg-zinc-900 border-zinc-800' : 'bg-black border-emerald-600 hover:bg-emerald-900/20 hover:scale-[1.02] active:scale-95 cursor-pointer'}
-                                `}
-                            >
-                                <div className="flex justify-between items-start">
-                                    <span className={`text-[10px] md:text-xs font-bold ${canAfford ? 'text-white' : 'text-rose-500'}`}>{sw.name}</span>
-                                    <span className="text-[9px] font-mono border border-current px-1">{sw.cost}</span>
-                                </div>
-                                <div className="hidden md:block text-[9px] text-zinc-400 leading-tight mt-1">{sw.desc}</div>
-                                
-                                {onCooldown && (
-                                    <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-[1px]">
-                                        <span className="text-xl font-bold text-rose-500">{player.cooldowns[id]}</span>
-                                    </div>
-                                )}
-                            </button>
-                        )
-                    })}
-                </div>
-            </div>
-        </div>
-    );
+        );
+    };
 
     const renderResult = () => (
         <div className="absolute inset-0 z-50 bg-black/95 flex items-center justify-center p-6 animate-in fade-in duration-500">

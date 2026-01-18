@@ -1,13 +1,13 @@
 import { Software, Hardware, Skill, TargetProfile, PassiveTool } from './types';
 
 export const CONFIG = {
-    storageKey: 'bitshift_evolution_save_v7_ts',
+    storageKey: 'bitshift_evolution_save_v8_ts',
     initialBits: 0,
     initialHp: 20,
     initialAp: 3,
     maxApCap: 5,
     miningBaseRate: 0.5,
-    maxLoadout: 4
+    maxLoadout: 5 // Increased loadout size to accommodate more options
 };
 
 export const TRANSLATIONS = {
@@ -80,7 +80,15 @@ export const TRANSLATIONS = {
             sessionResumed: "SESSION RESUMED",
             insufficientFunds: "Insufficient funds for patch",
             patchUpdated: "UPDATED",
-            miningRoutine: "Mining Routine"
+            miningRoutine: "Mining Routine",
+            effective: "EFFECTIVE!",
+            enemyAction: {
+                defense: "Defense Protocol",
+                drain: "Jamming Signal",
+                heavy: "Critical Surge",
+                attack: "Attack",
+                wait: "System Recharging"
+            }
         },
         result: {
             connectionLost: "CONNECTION_LOST",
@@ -161,7 +169,15 @@ export const TRANSLATIONS = {
             sessionResumed: "SESSÃO RETOMADA",
             insufficientFunds: "Fundos insuficientes para patch",
             patchUpdated: "ATUALIZADO",
-            miningRoutine: "Rotina de Mineração"
+            miningRoutine: "Rotina de Mineração",
+            effective: "EFETIVO!",
+            enemyAction: {
+                defense: "Protocolo de Defesa",
+                drain: "Sinal de Interferência",
+                heavy: "Surto Crítico",
+                attack: "Ataque",
+                wait: "Recarregando Sistema"
+            }
         },
         result: {
             connectionLost: "CONEXÃO_PERDIDA",
@@ -191,8 +207,8 @@ export const ENEMY_NAMES = ['GUEST', 'PROXY', 'GATEWAY', 'SENTRY', 'DAEMON', 'MA
 export const PROFILES: TargetProfile[] = [
       {
         id: "pc_win_legacy",
-        name: "PC Pessoal (Windows Legacy)",
-        description: "Sistema operacional antigo sem suporte. Altamente vulnerável, mas fácil de operar.",
+        name: "PC Windows Legacy",
+        description: "Sistema operacional antigo. Vulnerável a SMB exploits.",
         difficulty: "Hard",
         stats_modifier: { hp: 0.8, ap: 1.2, defense: 0.5 },
         vulnerability_level: "Critical",
@@ -203,8 +219,8 @@ export const PROFILES: TargetProfile[] = [
       },
       {
         id: "pc_mac_studio",
-        name: "Estação de Trabalho Mac",
-        description: "Ambiente fechado e robusto. Boa defesa natural, mas reparos são custosos.",
+        name: "Mac Workstation",
+        description: "Ambiente fechado e robusto. Boa defesa natural.",
         difficulty: "Easy",
         stats_modifier: { hp: 1.0, ap: 1.0, defense: 1.2 },
         vulnerability_level: "Low",
@@ -214,8 +230,8 @@ export const PROFILES: TargetProfile[] = [
       },
       {
         id: "server_linux",
-        name: "Servidor Linux (Debian)",
-        description: "A espinha dorsal da web. Requer conhecimento técnico. Resistente se bem configurado.",
+        name: "Linux Server (Debian)",
+        description: "Espinha dorsal da web. Resistente, mas alvo de Brute Force.",
         difficulty: "Medium",
         stats_modifier: { hp: 1.2, ap: 1.1, defense: 1.0 },
         vulnerability_level: "Medium",
@@ -226,8 +242,8 @@ export const PROFILES: TargetProfile[] = [
       },
       {
         id: "db_sql",
-        name: "Base de Dados SQL Legacy",
-        description: "Armazena dados críticos. O alvo favorito para roubo de informações.",
+        name: "SQL Database",
+        description: "Armazena dados críticos. Alvo de Injections.",
         difficulty: "Very Hard",
         stats_modifier: { hp: 1.5, ap: 0.8, defense: 0.6 },
         vulnerability_level: "High",
@@ -238,8 +254,8 @@ export const PROFILES: TargetProfile[] = [
       },
       {
         id: "cloud_vm",
-        name: "Máquina Virtual (Cloud)",
-        description: "Infraestrutura efêmera. Recuperação rápida, mas configurações de segurança complexas.",
+        name: "Cloud VM Instance",
+        description: "Infraestrutura efêmera. Rápida recuperação (AP alto).",
         difficulty: "Medium",
         stats_modifier: { hp: 0.7, ap: 1.5, defense: 0.9 },
         vulnerability_level: "Medium",
@@ -250,8 +266,8 @@ export const PROFILES: TargetProfile[] = [
       },
       {
         id: "web_app",
-        name: "Aplicação Web (Frontend)",
-        description: "A porta de entrada pública. Exposta a todo tipo de tráfego.",
+        name: "Frontend Web App",
+        description: "Porta de entrada pública. Suscetível a DDoS e XSS.",
         difficulty: "Hard",
         stats_modifier: { hp: 0.9, ap: 1.3, defense: 0.7 },
         vulnerability_level: "High",
@@ -262,8 +278,8 @@ export const PROFILES: TargetProfile[] = [
       },
       {
         id: "iot_network",
-        name: "Rede IoT (Smart Devices)",
-        description: "Muitos dispositivos pequenos e inseguros. Difícil de monitorar tudo.",
+        name: "IoT Mesh Network",
+        description: "Dispositivos inseguros. Muito rápido (AP), mas frágil (HP).",
         difficulty: "Very Hard",
         stats_modifier: { hp: 0.5, ap: 2.0, defense: 0.3 },
         vulnerability_level: "Critical",
@@ -299,23 +315,29 @@ export const PASSIVES_DB: PassiveTool[] = [
 ];
 
 export const SOFTWARE_DB: Record<string, Software> = {
-    // Starters
+    // Basic / Starter Cards (Standard)
     PING: { id: 'PING', name: 'PING', cost: 1, type: 'dmg', val: [2, 4], desc: 'Light Damage' },
-    INJECT: { id: 'INJECT', name: 'INJECT', cost: 3, type: 'dmg', val: [6, 10], desc: 'Heavy Damage' },
     FIREWALL: { id: 'FIREWALL', name: 'FIREWALL', cost: 2, type: 'shield', val: 5, cooldown: 3, desc: '+5 Def (CD: 3)' },
     OVERCLOCK: { id: 'OVERCLOCK', name: 'OVERCLOCK', cost: 0, type: 'special', effect: 'swap', desc: '-3 HP / +3 AP' },
     
-    // Shop (Standard)
+    // Starter Cards (Specialized - Now Free/Starter)
+    SQL_INJECT: { id: 'SQL_INJECT', name: 'SQL_INJECT', cost: 3, type: 'dmg', val: [6, 10], desc: 'Crit vs DB', bonuses: ['db_sql'] },
+    DDOS_PACKET: { id: 'DDOS_PACKET', name: 'DDOS_FLOOD', cost: 3, type: 'dmg', val: [5, 8], desc: 'Crit vs Web/Cloud', bonuses: ['web_app', 'cloud_vm'] },
+    EXPLOIT_SMB: { id: 'EXPLOIT_SMB', name: 'SMB_EXPLOIT', cost: 3, type: 'dmg', val: [7, 11], desc: 'Crit vs WinLegacy', bonuses: ['pc_win_legacy'] },
+    BRUTE_SSH: { id: 'BRUTE_SSH', name: 'BRUTE_SSH', cost: 2, type: 'risk', val: [8, 14], desc: 'Crit vs Linux', bonuses: ['server_linux'] },
+    
+    // Shop Items
     SIPHON: { id: 'SIPHON', name: 'VAMPIRE.exe', cost: 4, type: 'drain', val: [4, 6], price: 300, desc: 'Dmg + Heal 50%' },
     ROOT: { id: 'ROOT', name: 'ROOT_KIT', cost: 3, type: 'pierce', val: [5, 8], price: 500, desc: 'Ignores Shield' },
-    BRUTE: { id: 'BRUTE', name: 'BRUTE_FORCE', cost: 3, type: 'risk', val: [10, 15], price: 400, desc: 'High Risk (30% Fail)' },
+    BRUTE: { id: 'BRUTE', name: 'BRUTE_FORCE_PRO', cost: 3, type: 'risk', val: [12, 18], price: 400, desc: 'High Risk (30% Fail)' },
     VIRUS: { id: 'VIRUS', name: 'POLYMORPH.vbs', cost: 4, type: 'dmg', val: [8, 12], price: 800, cooldown: 2, desc: 'High Dmg (CD: 2)' },
-
-    // Shop (New Attack Tools from JSON)
-    RANSOMWARE: { id: 'RANSOMWARE', name: 'CryptoLocker', cost: 4, type: 'dmg', val: [15, 20], price: 400, desc: 'Massive Dmg vs Data' },
-    SQLMAP: { id: 'SQLMAP', name: 'SQL Injection', cost: 3, type: 'pierce', val: [8, 12], price: 250, desc: 'Pierce DB Defense' },
-    PHISHING: { id: 'PHISHING', name: 'Spear Phishing', cost: 2, type: 'dmg', val: [5, 8], price: 100, desc: 'Human Eng. Attack' },
-    // Re-using AV_HEURISTIC as an Active Shield card for the "Protection Tool (Active)" entry
+    
+    // Advanced Shop
+    RANSOMWARE: { id: 'RANSOMWARE', name: 'CryptoLocker', cost: 4, type: 'dmg', val: [15, 20], price: 400, desc: 'Massive Dmg vs Data', bonuses: ['db_sql', 'pc_win_legacy'] },
+    PHISHING: { id: 'PHISHING', name: 'Spear Phishing', cost: 2, type: 'dmg', val: [5, 8], price: 100, desc: 'Crit vs Users', bonuses: ['pc_win_legacy', 'pc_mac_studio'] },
+    IOT_JAMMER: { id: 'IOT_JAMMER', name: 'IoT Jammer', cost: 2, type: 'dmg', val: [4, 12], price: 150, desc: 'Crit vs IoT', bonuses: ['iot_network'] },
+    
+    // Utilities
     AV_HEURISTIC: { id: 'AV_HEURISTIC', name: 'Heuristic AV', cost: 2, type: 'shield', val: 8, price: 150, desc: 'Active Scan (+8 Def)' },
     VPN_TUNNEL: { id: 'VPN_TUNNEL', name: 'VPN Tunnel', cost: 1, type: 'special', effect: 'evasion', price: 200, desc: 'Evasion +20%' }
 };
@@ -343,7 +365,7 @@ export const HARDWARE_DB: Hardware[] = [
         name: 'Cryo-Cooler', 
         desc: '+Start AP (Energy)', 
         baseCost: 150, 
-        costMult: 1,
+        costMult: 1, 
         linear: true,
         effect: (level) => `Start AP +${Math.floor(level / 2)}`
     }
