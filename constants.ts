@@ -389,3 +389,4 @@ export const SKILLS_DB: Record<string, Skill> = {
         stats: (lvl) => `SHIELD: +${lvl * 10}% | MITIGATE: +${lvl * 5}%`
     }
 };
+
