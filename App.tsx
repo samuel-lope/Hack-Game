@@ -1,12 +1,24 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Panel, Button, ProgressBar, Icons } from './components/UI';
-import { UserState, ViewState, EntityState, LogEntry, CombatStats } from './types';
-import { CONFIG, RANKS, SOFTWARE_DB, HARDWARE_DB, SKILLS_DB, ENEMY_NAMES } from './constants';
+import { UserState, ViewState, EntityState, LogEntry, CombatStats, Language } from './types';
+import { CONFIG, RANKS, SOFTWARE_DB, HARDWARE_DB, SKILLS_DB, ENEMY_NAMES, TRANSLATIONS } from './constants';
 
 // --- UTILS ---
 const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1) + min);
 
+const generateUserId = () => {
+    // Generates format AAA.BBB.CCC.DDD based on timestamp + random
+    const ts = Date.now().toString(16).toUpperCase();
+    const rand = () => Math.floor(Math.random() * 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+    
+    // Take last 4 of timestamp for first block to ensure time rotation, then randoms
+    const part1 = ts.slice(-4);
+    
+    return `${part1}.${rand()}.${rand()}.${rand()}`;
+};
+
 const INITIAL_USER: UserState = {
+    id: generateUserId(),
     bits: CONFIG.initialBits,
     xp: 0,
     hardware: { cpu: 0, ram: 0, cooler: 0 },
@@ -21,6 +33,12 @@ export default function App() {
     const [user, setUser] = useState<UserState>(INITIAL_USER);
     const [view, setView] = useState<ViewState>('MENU');
     const [glitch, setGlitch] = useState(false);
+    const [lang, setLang] = useState<Language>('en-US');
+
+    const t = TRANSLATIONS[lang];
+
+    // File Input Ref
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Session State
     const [level, setLevel] = useState(1);
@@ -45,6 +63,11 @@ export default function App() {
                 const parsed = JSON.parse(saved);
                 // Simple migration check for old save structures
                 if (!parsed.skills) parsed.skills = { offense: 0, defense: 0 };
+                // Migration for ID
+                if (!parsed.id) {
+                    parsed.id = generateUserId();
+                    localStorage.setItem(CONFIG.storageKey, JSON.stringify(parsed));
+                }
                 setUser(parsed);
             } catch (e) {
                 console.error("Save corrupted", e);
@@ -61,6 +84,74 @@ export default function App() {
     const saveUser = (newData: UserState) => {
         setUser(newData);
         localStorage.setItem(CONFIG.storageKey, JSON.stringify(newData));
+    };
+
+    const handleSaveAndExit = () => {
+        const activeRunData = {
+            level,
+            sessionBits,
+            minedBits,
+            sessionUpgrades,
+            player,
+            enemy,
+            turn,
+            logs
+        };
+
+        const updatedUser = {
+            ...user,
+            activeRun: activeRunData
+        };
+
+        saveUser(updatedUser);
+        setView('MENU');
+    };
+
+    // --- IMPORT / EXPORT LOGIC ---
+    const handleExportSave = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(user, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", `bitshift_save_${user.id}.json`);
+        document.body.appendChild(downloadAnchorNode); // required for firefox
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+        triggerGlitch();
+    };
+
+    const handleImportClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const fileObj = event.target.files && event.target.files[0];
+        if (!fileObj) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const json = e.target?.result as string;
+                const parsed = JSON.parse(json);
+                
+                // Basic validation
+                if (parsed.bits !== undefined && parsed.hardware && parsed.inventory) {
+                    // Ensure ID exists
+                    if (!parsed.id) parsed.id = generateUserId();
+                    
+                    saveUser(parsed);
+                    triggerGlitch();
+                    alert(`USER_${parsed.id} ${t.menu.successRestore}.`);
+                    // Reset file input
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                } else {
+                    throw new Error("Invalid Save Format");
+                }
+            } catch (err) {
+                alert(t.menu.errorFile);
+                console.error(err);
+            }
+        };
+        reader.readAsText(fileObj);
     };
 
     // --- DERIVED STATS ---
@@ -100,12 +191,28 @@ export default function App() {
 
     const startGame = () => {
         setView('GAME');
-        setLevel(1);
-        setSessionBits(0);
-        setMinedBits(0);
-        setSessionUpgrades({ offense: 0, defense: 0 });
-        setLogs([]);
-        startLevel(1);
+        
+        if (user.activeRun) {
+            // Resume Game
+            const run = user.activeRun;
+            setLevel(run.level);
+            setSessionBits(run.sessionBits);
+            setMinedBits(run.minedBits);
+            setSessionUpgrades(run.sessionUpgrades);
+            setPlayer(run.player);
+            setEnemy(run.enemy);
+            setTurn(run.turn);
+            setLogs(run.logs);
+            addLog(`${t.game.sessionResumed}. WELCOME BACK, ${user.id}.`, 'system');
+        } else {
+            // New Game
+            setLevel(1);
+            setSessionBits(0);
+            setMinedBits(0);
+            setSessionUpgrades({ offense: 0, defense: 0 });
+            setLogs([]);
+            startLevel(1);
+        }
     };
 
     const startLevel = (lvl: number) => {
@@ -137,13 +244,13 @@ export default function App() {
 
         setTurn(1);
         setIsPlayerTurn(true);
-        addLog(`Target locked: ${name}. Connection established.`, 'system');
+        addLog(`${t.game.targetLocked}: ${name}. ${t.game.connectionEst}.`, 'system');
     };
 
     const handleWin = (currentLevel: number) => {
         const earned = currentLevel * 10 + randomInt(5, 15);
         setSessionBits(prev => prev + earned);
-        addLog(`Target neutralized. +${earned} BITS obtained.`, 'success');
+        addLog(`${t.game.targetNeut}. +${earned} ${t.game.bitsObtained}.`, 'success');
         
         setTimeout(() => {
             const next = currentLevel + 1;
@@ -163,7 +270,8 @@ export default function App() {
             stats: {
                 games: user.stats.games + 1,
                 maxLevel: Math.max(user.stats.maxLevel, level)
-            }
+            },
+            activeRun: undefined // Clear active run on defeat
         };
         saveUser(newUserData);
         triggerGlitch();
@@ -175,12 +283,12 @@ export default function App() {
         
         const sw = SOFTWARE_DB[swId];
         if (player.cooldowns[swId] > 0) {
-            addLog(`System busy: ${player.cooldowns[swId]} turns remaining.`, 'error');
+            addLog(`${t.game.sysBusy}: ${player.cooldowns[swId]} turns remaining.`, 'error');
             return;
         }
 
         if (player.ap < sw.cost) {
-            addLog('Insufficient Bandwidth (AP).', 'error');
+            addLog(t.game.insufficientAp, 'error');
             return;
         }
 
@@ -328,7 +436,7 @@ export default function App() {
         setEnemy(e);
         
         addLog(action, action.includes('MITIGATED') ? 'info' : 'warning');
-        addLog(`Mining Routine: +${miningGain.toFixed(1)} BITS`, 'system');
+        addLog(`${t.game.miningRoutine}: +${miningGain.toFixed(1)} BITS`, 'system');
 
         if (p.hp <= 0) {
             handleDefeat();
@@ -343,7 +451,7 @@ export default function App() {
         const available = user.bits + sessionBits;
         
         if (available < cost) {
-            addLog('Insufficient funds for patch.', 'error');
+            addLog(t.game.insufficientFunds, 'error');
             return;
         }
 
@@ -356,7 +464,8 @@ export default function App() {
         }
 
         setSessionUpgrades(prev => ({ ...prev, [type]: prev[type] + 1 }));
-        addLog(`LIVE PATCH: ${type.toUpperCase()} UPDATED`, 'success');
+        const label = type === 'offense' ? t.game.atk : t.game.def;
+        addLog(`${t.game.livePatch}: ${label} ${t.game.patchUpdated}`, 'success');
     };
 
     const buyItem = (type: 'hardware' | 'software' | 'skill', id: string, cost: number) => {
@@ -391,16 +500,26 @@ export default function App() {
                     BIT-SHIFT
                     <span className="text-emerald-200">{'}'}</span>
                 </h1>
-                <div className="text-[10px] md:text-xs text-zinc-500 font-mono">
-                    XP: {Math.floor(user.xp)} | <span className="text-emerald-600 font-bold">[{playerRank.title}]</span>
+                <div className="text-xs md:text-sm mt-1 font-mono tracking-wide">
+                    <span className="text-zinc-300 font-bold">XP: {Math.floor(user.xp)}</span>
+                    <span className="mx-2 text-zinc-600">|</span>
+                    <span className="text-emerald-400 font-bold drop-shadow-md">[{playerRank.title}]</span>
                 </div>
             </div>
             <div className="text-right">
                 <div className="text-amber-500 font-mono font-bold text-lg flex items-center justify-end gap-2">
                     {Math.floor(view === 'GAME' ? sessionBits + user.bits : user.bits)} <Icons.Disc />
                 </div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">
-                    {view === 'GAME' ? 'Total Available' : 'Wallet Balance'}
+                <div className="text-[10px] text-zinc-500 uppercase tracking-wider h-6 flex items-center justify-end">
+                    {view === 'GAME' ? (
+                        <button 
+                            onClick={handleSaveAndExit} 
+                            className="hover:text-emerald-400 hover:underline transition-colors cursor-pointer flex items-center gap-1 ml-auto font-bold animate-pulse hover:animate-none"
+                            title="Suspend current run and return to menu"
+                        >
+                            <Icons.Lock /> {t.header.saveExit}
+                        </button>
+                    ) : t.header.wallet}
                 </div>
             </div>
         </header>
@@ -410,34 +529,61 @@ export default function App() {
 
     const renderMenu = () => (
         <div className="flex flex-col gap-6 max-w-md w-full mx-auto mt-10 p-4">
-            <Panel title="System Status" className="mb-4">
+            <Panel title={t.menu.systemStatus} className="mb-4">
                 <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono mb-4">
                     <div className="bg-emerald-900/20 p-2 border border-emerald-900/50 rounded">
-                        <div className="text-zinc-500">CPU</div>
+                        <div className="text-zinc-500">{t.menu.cpu}</div>
                         <div className="text-emerald-400 font-bold text-lg">v{user.hardware.cpu}</div>
                     </div>
                     <div className="bg-emerald-900/20 p-2 border border-emerald-900/50 rounded">
-                        <div className="text-zinc-500">RAM</div>
+                        <div className="text-zinc-500">{t.menu.ram}</div>
                         <div className="text-emerald-400 font-bold text-lg">v{user.hardware.ram}</div>
                     </div>
                     <div className="bg-emerald-900/20 p-2 border border-emerald-900/50 rounded">
-                        <div className="text-zinc-500">COOLER</div>
+                        <div className="text-zinc-500">{t.menu.cooler}</div>
                         <div className="text-emerald-400 font-bold text-lg">v{user.hardware.cooler}</div>
                     </div>
                 </div>
                 <div className="flex justify-between text-xs px-2 pt-2 border-t border-emerald-900/30">
-                     <span className="text-rose-400 font-bold">ATK: Lv.{user.skills.offense}</span>
-                     <span className="text-sky-400 font-bold">DEF: Lv.{user.skills.defense}</span>
+                     <span className="text-rose-400 font-bold">{t.menu.atk}: Lv.{user.skills.offense}</span>
+                     <span className="text-sky-400 font-bold">{t.menu.def}: Lv.{user.skills.defense}</span>
                 </div>
             </Panel>
 
             <Button size="lg" onClick={startGame} className="w-full shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-                <Icons.Terminal /> INITIALIZE RUN
+                <Icons.Terminal /> {user.activeRun ? t.menu.resumeRun : t.menu.initRun}
             </Button>
             
             <div className="grid grid-cols-2 gap-4">
-                <Button variant="market" onClick={() => setView('MARKET')}>MARKET</Button>
-                <Button variant="warning" onClick={() => setView('LOADOUT')}>DECK ({user.loadout.length}/{CONFIG.maxLoadout})</Button>
+                <Button variant="market" onClick={() => setView('MARKET')}>{t.menu.market}</Button>
+                <Button variant="warning" onClick={() => setView('LOADOUT')}>{t.menu.deck} ({user.loadout.length}/{CONFIG.maxLoadout})</Button>
+            </div>
+
+            <div className="pt-6 border-t border-zinc-900 mt-2 grid grid-cols-2 gap-4">
+                <Button variant="ghost" size="sm" onClick={handleExportSave} className="text-xs">
+                    {t.menu.backup}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleImportClick} className="text-xs">
+                    {t.menu.restore}
+                </Button>
+                {/* Hidden File Input */}
+                <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileChange} 
+                    accept=".json" 
+                    className="hidden" 
+                />
+            </div>
+            
+            <div className="flex justify-center items-center gap-4 mt-2">
+                <div className="text-[10px] font-mono text-zinc-700">ID: {user.id}</div>
+                <button 
+                    onClick={() => setLang(l => l === 'en-US' ? 'pt-BR' : 'en-US')}
+                    className="text-[10px] font-mono text-emerald-600 border border-emerald-900 px-2 py-0.5 rounded hover:bg-emerald-900/30 transition"
+                >
+                    {lang === 'en-US' ? 'LANG: EN' : 'LANG: PT'}
+                </button>
             </div>
         </div>
     );
@@ -445,13 +591,13 @@ export default function App() {
     const renderMarket = () => (
         <div className="max-w-4xl w-full mx-auto p-4 space-y-8 pb-20">
             <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-violet-400 glow-text">DARK WEB MARKET</h2>
-                <Button variant="ghost" size="sm" onClick={() => setView('MENU')}>Back to Menu</Button>
+                <h2 className="text-2xl font-bold text-violet-400 glow-text">{t.market.title}</h2>
+                <Button variant="ghost" size="sm" onClick={() => setView('MENU')}>{t.market.back}</Button>
             </div>
 
             {/* Hardware Section */}
             <section>
-                <h3 className="text-emerald-500 border-b border-emerald-900 mb-4 pb-2 font-bold flex items-center gap-2"><Icons.Cpu /> HARDWARE UPGRADES</h3>
+                <h3 className="text-emerald-500 border-b border-emerald-900 mb-4 pb-2 font-bold flex items-center gap-2"><Icons.Cpu /> {t.market.hardware}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {HARDWARE_DB.map(hw => {
                         const lvl = user.hardware[hw.id];
@@ -476,7 +622,7 @@ export default function App() {
                                     variant="primary"
                                     className="w-full"
                                 >
-                                    {user.bits >= cost ? `UPGRADE (${cost})` : `NEED ${cost} BITS`}
+                                    {user.bits >= cost ? `${t.market.upgrade} (${cost})` : `${t.market.need} ${cost} BITS`}
                                 </Button>
                             </Panel>
                         );
@@ -486,7 +632,7 @@ export default function App() {
 
             {/* Skills Section */}
             <section>
-                <h3 className="text-rose-500 border-b border-rose-900 mb-4 pb-2 font-bold flex items-center gap-2"><Icons.Zap /> NEURAL TRAINING</h3>
+                <h3 className="text-rose-500 border-b border-rose-900 mb-4 pb-2 font-bold flex items-center gap-2"><Icons.Zap /> {t.market.neural}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {Object.values(SKILLS_DB).map(skill => {
                         const lvl = user.skills[skill.id as keyof typeof user.skills];
@@ -505,7 +651,7 @@ export default function App() {
                                     variant="danger"
                                     className="w-full mt-4"
                                 >
-                                    TRAIN ({cost})
+                                    {t.market.train} ({cost})
                                 </Button>
                             </Panel>
                         );
@@ -515,7 +661,7 @@ export default function App() {
 
              {/* Software Section */}
              <section>
-                <h3 className="text-violet-500 border-b border-violet-900 mb-4 pb-2 font-bold flex items-center gap-2"><Icons.Disc /> SOFTWARE BLACK MARKET</h3>
+                <h3 className="text-violet-500 border-b border-violet-900 mb-4 pb-2 font-bold flex items-center gap-2"><Icons.Disc /> {t.market.software}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {Object.values(SOFTWARE_DB).filter(sw => sw.price).map(sw => {
                         const owned = user.inventory.includes(sw.id);
@@ -527,7 +673,7 @@ export default function App() {
                                 </div>
                                 <p className="text-xs text-zinc-400 mb-4 h-8">{sw.desc}</p>
                                 {owned ? (
-                                    <div className="w-full py-2 text-center text-xs font-bold bg-zinc-900 border border-zinc-700 text-zinc-500">OWNED</div>
+                                    <div className="w-full py-2 text-center text-xs font-bold bg-zinc-900 border border-zinc-700 text-zinc-500">{t.market.owned}</div>
                                 ) : (
                                     <Button 
                                         size="sm"
@@ -536,7 +682,7 @@ export default function App() {
                                         disabled={user.bits < sw.price!}
                                         className="w-full"
                                     >
-                                        BUY {sw.price}
+                                        {t.market.buy} {sw.price}
                                     </Button>
                                 )}
                             </Panel>
@@ -550,12 +696,12 @@ export default function App() {
     const renderDeck = () => (
         <div className="max-w-4xl w-full mx-auto p-4 flex flex-col h-full">
             <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-amber-500 glow-text">LOADOUT CONFIG</h2>
-                <Button variant="primary" onClick={() => setView('MENU')}>CONFIRM</Button>
+                <h2 className="text-2xl font-bold text-amber-500 glow-text">{t.deck.title}</h2>
+                <Button variant="primary" onClick={() => setView('MENU')}>{t.deck.confirm}</Button>
             </div>
             
             <div className="mb-4 text-xs text-zinc-400 font-mono">
-                SLOTS USED: <span className={`${user.loadout.length === CONFIG.maxLoadout ? 'text-amber-500' : 'text-emerald-500'}`}>{user.loadout.length}/{CONFIG.maxLoadout}</span>
+                {t.deck.slots}: <span className={`${user.loadout.length === CONFIG.maxLoadout ? 'text-amber-500' : 'text-emerald-500'}`}>{user.loadout.length}/{CONFIG.maxLoadout}</span>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 overflow-y-auto pb-20">
@@ -580,7 +726,7 @@ export default function App() {
                             </div>
                             {equipped && (
                                 <div className="absolute top-0 right-0 bg-emerald-600 text-black text-[9px] font-bold px-1.5 py-0.5">
-                                    EQUIPPED
+                                    {t.deck.equipped}
                                 </div>
                             )}
                         </button>
@@ -601,7 +747,7 @@ export default function App() {
                         <span className="text-rose-500 font-bold flex items-center gap-2"><Icons.User/> {enemy.name}</span>
                         {enemy.shield > 0 && <span className="text-[10px] bg-rose-900/20 px-2 py-0.5 rounded border border-rose-900 text-rose-300"><Icons.Shield /> {enemy.shield}</span>}
                     </div>
-                    <ProgressBar current={enemy.hp} max={enemy.maxHp} color="bg-rose-600" label="INTEGRITY" showValue={true} />
+                    <ProgressBar current={enemy.hp} max={enemy.maxHp} color="bg-rose-600" label={t.game.integrity} showValue={true} />
                     <div className="flex gap-1 mt-2 justify-end">
                          {/* Enemy AP Visualization */}
                         {[...Array(enemy.maxAp)].map((_, i) => (
@@ -613,15 +759,15 @@ export default function App() {
                 {/* Player Card */}
                 <Panel borderColor="border-emerald-600" bgColor="bg-black/90" className="shadow-[0_0_15px_rgba(16,185,129,0.1)]">
                     <div className="flex justify-between items-center mb-2">
-                        <span className="text-emerald-500 font-bold flex items-center gap-2"><Icons.Terminal/> USER_DAEMON</span>
+                        <span className="text-emerald-500 font-bold flex items-center gap-2"><Icons.Terminal/> USER_[{user.id}]</span>
                         {player.shield > 0 && <span className="text-[10px] bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-900 text-emerald-300"><Icons.Shield /> {player.shield}</span>}
                     </div>
                     
                     <div className="space-y-3">
-                        <ProgressBar current={player.hp} max={player.maxHp} color="bg-emerald-500" label="INTEGRITY" />
+                        <ProgressBar current={player.hp} max={player.maxHp} color="bg-emerald-500" label={t.game.integrity} />
                         
                         <div>
-                            <div className="text-[10px] text-emerald-700 mb-1 font-mono">BANDWIDTH (AP)</div>
+                            <div className="text-[10px] text-emerald-700 mb-1 font-mono">{t.game.bandwidth}</div>
                             <div className="flex gap-1 h-4">
                                 {[...Array(player.maxAp)].map((_, i) => (
                                     <div key={i} className={`flex-1 border border-emerald-800 transition-all ${i < player.ap ? 'bg-amber-400 shadow-[0_0_5px_rgba(251,191,36,0.5)]' : 'bg-transparent'}`}></div>
@@ -632,11 +778,11 @@ export default function App() {
                 </Panel>
 
                 {/* Live Patching */}
-                <Panel borderColor="border-amber-900/50" title="LIVE PATCHING" className="text-center">
+                <Panel borderColor="border-amber-900/50" title={t.game.livePatch} className="text-center">
                     <div className="flex gap-2">
                         {[
-                            { id: 'offense', label: 'ATK', color: 'text-rose-400', border: 'border-rose-900' },
-                            { id: 'defense', label: 'DEF', color: 'text-sky-400', border: 'border-sky-900' }
+                            { id: 'offense', label: t.game.atk, color: 'text-rose-400', border: 'border-rose-900' },
+                            { id: 'defense', label: t.game.def, color: 'text-sky-400', border: 'border-sky-900' }
                         ].map((item) => {
                             const cost = 10 * (sessionUpgrades[item.id as 'offense'] + 1);
                             const canAfford = (user.bits + sessionBits) >= cost;
@@ -648,7 +794,7 @@ export default function App() {
                                     className={`flex-1 border ${item.border} p-2 transition active:scale-95 disabled:opacity-30 hover:bg-white/5`}
                                 >
                                     <div className={`text-xs font-bold ${item.color}`}>{item.label} <span className="text-[9px]">Lv.{sessionUpgrades[item.id as 'offense']}</span></div>
-                                    <div className="text-[10px] text-zinc-500 mt-1">{cost} BITS</div>
+                                    <div className="text-[10px] text-zinc-500 mt-1">{cost} {t.game.bits}</div>
                                 </button>
                             );
                         })}
@@ -656,7 +802,7 @@ export default function App() {
                 </Panel>
                 
                 <div className="text-center font-mono text-[10px] text-zinc-600 bg-black/50 p-1 border border-zinc-900">
-                    LEVEL {level} // TURN {turn}
+                    {t.game.level} {level} // {t.game.turn} {turn}
                 </div>
             </div>
 
@@ -664,7 +810,7 @@ export default function App() {
             <div className="md:col-span-8 flex flex-col h-full gap-4 order-1 md:order-2 overflow-hidden">
                 
                 {/* Terminal Log */}
-                <div className="flex-1 bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-[150px] shadow-inner relative">
+                <div className="flex-1 bg-black border border-zinc-800 p-4 font-mono text-xs overflow-y-auto min-h-[100px] shadow-inner relative">
                     <div className="absolute top-0 right-0 p-2 opacity-20 pointer-events-none">
                         <Icons.Terminal />
                     </div>
@@ -726,32 +872,32 @@ export default function App() {
         <div className="absolute inset-0 z-50 bg-black/95 flex items-center justify-center p-6 animate-in fade-in duration-500">
             <div className="max-w-md w-full text-center space-y-6">
                 <div className="space-y-2">
-                    <h2 className="text-4xl font-bold text-rose-600 glitch-active">CONNECTION_LOST</h2>
-                    <p className="text-zinc-500 font-mono tracking-widest text-sm">DATA EXTRACTION COMPLETE</p>
+                    <h2 className="text-4xl font-bold text-rose-600 glitch-active">{t.result.connectionLost}</h2>
+                    <p className="text-zinc-500 font-mono tracking-widest text-sm">{t.result.extractionComplete}</p>
                 </div>
 
                 <div className="border border-zinc-800 bg-zinc-900/30 p-6 space-y-3 font-mono text-sm">
                     <div className="flex justify-between text-zinc-400">
-                        <span>SECTORS CLEARED</span>
+                        <span>{t.result.sectors}</span>
                         <span className="text-white">{level - 1}</span>
                     </div>
                     <div className="flex justify-between text-zinc-400">
-                        <span>TURNS SURVIVED</span>
+                        <span>{t.result.turns}</span>
                         <span className="text-white">{turn}</span>
                     </div>
                     <div className="flex justify-between text-amber-600">
-                        <span>MINING YIELD</span>
+                        <span>{t.result.mining}</span>
                         <span>+{minedBits.toFixed(1)}</span>
                     </div>
                     <div className="h-px bg-zinc-800 my-2"></div>
                     <div className="flex justify-between text-lg text-amber-400 font-bold">
-                        <span>TOTAL EARNINGS</span>
-                        <span>+{Math.floor(sessionBits)} BITS</span>
+                        <span>{t.result.total}</span>
+                        <span>+{Math.floor(sessionBits)} {t.game.bits}</span>
                     </div>
                 </div>
 
                 <Button variant="primary" size="lg" className="w-full" onClick={() => setView('MENU')}>
-                    RETURN TO ROOT
+                    {t.result.return}
                 </Button>
             </div>
         </div>

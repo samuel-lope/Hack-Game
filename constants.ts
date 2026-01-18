@@ -10,6 +10,151 @@ export const CONFIG = {
     maxLoadout: 4
 };
 
+export const TRANSLATIONS = {
+    'en-US': {
+        header: {
+            wallet: "Wallet Balance",
+            total: "Total Available",
+            saveExit: "SAVE & EXIT"
+        },
+        menu: {
+            systemStatus: "System Status",
+            cpu: "CPU",
+            ram: "RAM",
+            cooler: "COOLER",
+            atk: "ATK",
+            def: "DEF",
+            initRun: "INITIALIZE RUN",
+            resumeRun: "RESUME RUN",
+            market: "MARKET",
+            deck: "DECK",
+            backup: "BACKUP DATA",
+            restore: "RESTORE DATA",
+            successRestore: "RESTORED SUCCESSFULLY",
+            errorFile: "ERROR: CORRUPTED DATA FILE",
+            invalidSave: "Invalid Save Format"
+        },
+        market: {
+            title: "DARK WEB MARKET",
+            back: "Back to Menu",
+            hardware: "HARDWARE UPGRADES",
+            neural: "NEURAL TRAINING",
+            software: "SOFTWARE BLACK MARKET",
+            upgrade: "UPGRADE",
+            need: "NEED",
+            train: "TRAIN",
+            buy: "BUY",
+            owned: "OWNED"
+        },
+        deck: {
+            title: "LOADOUT CONFIG",
+            confirm: "CONFIRM",
+            slots: "SLOTS USED",
+            equipped: "EQUIPPED"
+        },
+        game: {
+            integrity: "INTEGRITY",
+            bandwidth: "BANDWIDTH (AP)",
+            livePatch: "LIVE PATCHING",
+            level: "LEVEL",
+            turn: "TURN",
+            atk: "ATK",
+            def: "DEF",
+            bits: "BITS",
+            sysBusy: "System busy",
+            insufficientAp: "Insufficient Bandwidth (AP)",
+            targetLocked: "Target locked",
+            connectionEst: "Connection established",
+            targetNeut: "Target neutralized",
+            bitsObtained: "BITS obtained",
+            sessionResumed: "SESSION RESUMED",
+            insufficientFunds: "Insufficient funds for patch",
+            patchUpdated: "UPDATED",
+            miningRoutine: "Mining Routine"
+        },
+        result: {
+            connectionLost: "CONNECTION_LOST",
+            extractionComplete: "DATA EXTRACTION COMPLETE",
+            sectors: "SECTORS CLEARED",
+            turns: "TURNS SURVIVED",
+            mining: "MINING YIELD",
+            total: "TOTAL EARNINGS",
+            return: "RETURN TO ROOT"
+        }
+    },
+    'pt-BR': {
+        header: {
+            wallet: "Saldo da Carteira",
+            total: "Total Disponível",
+            saveExit: "SALVAR & SAIR"
+        },
+        menu: {
+            systemStatus: "Status do Sistema",
+            cpu: "CPU",
+            ram: "RAM",
+            cooler: "RESFR.",
+            atk: "ATQ",
+            def: "DEF",
+            initRun: "INICIAR EXECUÇÃO",
+            resumeRun: "RETOMAR EXECUÇÃO",
+            market: "MERCADO",
+            deck: "DECK",
+            backup: "BACKUP DE DADOS",
+            restore: "RESTAURAR DADOS",
+            successRestore: "RESTAURADO COM SUCESSO",
+            errorFile: "ERRO: ARQUIVO CORROMPIDO",
+            invalidSave: "Formato de Save Inválido"
+        },
+        market: {
+            title: "MERCADO DARK WEB",
+            back: "Voltar ao Menu",
+            hardware: "UPGRADES DE HARDWARE",
+            neural: "TREINAMENTO NEURAL",
+            software: "MERCADO NEGRO DE SOFTWARE",
+            upgrade: "MELHORAR",
+            need: "PRECISA",
+            train: "TREINAR",
+            buy: "COMPRAR",
+            owned: "POSSUÍDO"
+        },
+        deck: {
+            title: "CONFIGURAÇÃO DE LOADOUT",
+            confirm: "CONFIRMAR",
+            slots: "SLOTS USADOS",
+            equipped: "EQUIPADO"
+        },
+        game: {
+            integrity: "INTEGRIDADE",
+            bandwidth: "LARGURA DE BANDA (AP)",
+            livePatch: "PATCH EM TEMPO REAL",
+            level: "NÍVEL",
+            turn: "TURNO",
+            atk: "ATQ",
+            def: "DEF",
+            bits: "BITS",
+            sysBusy: "Sistema ocupado",
+            insufficientAp: "Largura de Banda Insuficiente",
+            targetLocked: "Alvo travado",
+            connectionEst: "Conexão estabelecida",
+            targetNeut: "Alvo neutralizado",
+            bitsObtained: "BITS obtidos",
+            sessionResumed: "SESSÃO RETOMADA",
+            insufficientFunds: "Fundos insuficientes para patch",
+            patchUpdated: "ATUALIZADO",
+            miningRoutine: "Rotina de Mineração"
+        },
+        result: {
+            connectionLost: "CONEXÃO_PERDIDA",
+            extractionComplete: "EXTRAÇÃO DE DADOS COMPLETA",
+            sectors: "SETORES LIMPOS",
+            turns: "TURNOS SOBREVIVIDOS",
+            mining: "RENDIMENTO DE MINERAÇÃO",
+            total: "GANHOS TOTAIS",
+            return: "RETORNAR AO ROOT"
+        }
+    }
+};
+
 export const RANKS = [
     { lvl: 0, title: "Script Kiddie", xp: 0 },
     { lvl: 1, title: "Hacktivist", xp: 500 },

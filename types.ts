@@ -1,5 +1,7 @@
 export type ViewState = 'MENU' | 'GAME' | 'MARKET' | 'LOADOUT' | 'RESULT';
 
+export type Language = 'en-US' | 'pt-BR';
+
 export type SoftwareType = 'dmg' | 'shield' | 'special' | 'drain' | 'pierce' | 'risk';
 
 export interface Software {
@@ -33,7 +35,25 @@ export interface Skill {
     stats: (level: number) => string;
 }
 
+export interface LogEntry {
+    id: string;
+    time: string;
+    text: string;
+    type: 'info' | 'success' | 'warning' | 'error' | 'system';
+}
+
+export interface EntityState {
+    hp: number;
+    maxHp: number;
+    ap: number;
+    maxAp: number;
+    shield: number;
+    name: string;
+    cooldowns: Record<string, number>;
+}
+
 export interface UserState {
+    id: string;
     bits: number;
     xp: number;
     hardware: {
@@ -51,6 +71,16 @@ export interface UserState {
         games: number;
         maxLevel: number;
     };
+    activeRun?: {
+        level: number;
+        sessionBits: number;
+        minedBits: number;
+        sessionUpgrades: { offense: number; defense: number };
+        player: EntityState;
+        enemy: EntityState;
+        turn: number;
+        logs: LogEntry[];
+    };
 }
 
 export interface CombatStats {
@@ -63,21 +93,4 @@ export interface CombatStats {
     unstableChance: number;
     shieldMult: number;
     mitigationChance: number;
-}
-
-export interface LogEntry {
-    id: string;
-    time: string;
-    text: string;
-    type: 'info' | 'success' | 'warning' | 'error' | 'system';
-}
-
-export interface EntityState {
-    hp: number;
-    maxHp: number;
-    ap: number;
-    maxAp: number;
-    shield: number;
-    name: string;
-    cooldowns: Record<string, number>;
 }
