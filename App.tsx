@@ -1008,7 +1008,7 @@ export default function App() {
                             onClick={() => useSoftware(id)}
                             disabled={disabled}
                             className={`
-                                relative border p-3 flex flex-col justify-between transition-all duration-100 min-h-90px text-left
+                                relative border p-3 flex flex-col justify-between transition-all duration-100 min-h-22.5 text-left
                                 ${disabled ? 'opacity-40 bg-zinc-900 border-zinc-800' : 'bg-black border-zinc-700 hover:bg-zinc-900 hover:border-white active:scale-95'}
                             `}
                         >
