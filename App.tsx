@@ -54,6 +54,9 @@ export default function App() {
     const [turn, setTurn] = useState(1);
     const [isPlayerTurn, setIsPlayerTurn] = useState(true);
     
+    // UI State for Combat
+    const [activeCombatMenu, setActiveCombatMenu] = useState<'OFFENSE' | 'DEFENSE' | null>(null);
+    
     const logsEndRef = useRef<HTMLDivElement>(null);
 
     // --- INITIALIZATION ---
@@ -291,6 +294,7 @@ export default function App() {
 
         setTurn(1);
         setIsPlayerTurn(true);
+        setActiveCombatMenu(null);
         addLog(`${t.game.targetLocked}: ${name} [${enemyProfile.difficulty}].`, 'system');
     };
 
@@ -338,6 +342,9 @@ export default function App() {
             addLog(t.game.insufficientAp, 'error');
             return;
         }
+
+        // Close Menu on use
+        setActiveCombatMenu(null);
 
         let newP = { ...player, ap: player.ap - sw.cost };
         let newE = { ...enemy };
@@ -972,10 +979,95 @@ export default function App() {
 
     const renderCombat = () => {
         const enemyProfile = PROFILES.find(p => p.id === enemy.profileId);
+        
+        // Split loadout into categories
+        const offensiveLoadout = user.loadout.filter(id => {
+            const type = SOFTWARE_DB[id].type;
+            return ['dmg', 'pierce', 'risk', 'drain'].includes(type);
+        });
+        
+        const defensiveLoadout = user.loadout.filter(id => {
+            const type = SOFTWARE_DB[id].type;
+            return ['shield', 'special'].includes(type);
+        });
+
+        // Helper to render action grid in modal
+        const renderActionList = (items: string[]) => (
+             <div className="grid grid-cols-2 gap-3">
+                {items.length === 0 && <div className="col-span-2 text-center text-zinc-500 text-xs py-4 font-mono">NO PROTOCOLS AVAILABLE</div>}
+                {items.map(id => {
+                    const sw = SOFTWARE_DB[id];
+                    const canAfford = player.ap >= sw.cost;
+                    const onCooldown = (player.cooldowns[id] || 0) > 0;
+                    const disabled = !canAfford || onCooldown;
+                    const isEffective = sw.bonuses && enemy.profileId && sw.bonuses.includes(enemy.profileId);
+
+                    return (
+                        <button 
+                            key={id}
+                            onClick={() => useSoftware(id)}
+                            disabled={disabled}
+                            className={`
+                                relative border p-3 flex flex-col justify-between transition-all duration-100 min-h-[90px] text-left
+                                ${disabled ? 'opacity-40 bg-zinc-900 border-zinc-800' : 'bg-black border-zinc-700 hover:bg-zinc-900 hover:border-white active:scale-95'}
+                            `}
+                        >
+                            <div className="flex justify-between items-start mb-1">
+                                <span className={`text-xs font-bold ${canAfford ? 'text-white' : 'text-rose-500'}`}>{sw.name}</span>
+                                <span className="text-[10px] font-mono border border-current px-1 rounded">{sw.cost} AP</span>
+                            </div>
+                            <div className="text-[10px] text-zinc-400 leading-tight">{sw.desc}</div>
+                            
+                            {isEffective && !disabled && (
+                                <div className="absolute top-1 right-1">
+                                    <span className="relative flex h-2 w-2">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                    </span>
+                                </div>
+                            )}
+
+                            {onCooldown && (
+                                <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-[1px] z-10">
+                                    <span className="text-xl font-bold text-rose-500">{player.cooldowns[id]}</span>
+                                </div>
+                            )}
+                        </button>
+                    )
+                })}
+            </div>
+        );
 
         return (
-            <div className="w-full max-w-5xl mx-auto h-[calc(100vh-60px)] flex flex-col md:grid md:grid-cols-12 gap-2 p-2 md:p-4 overflow-hidden">
+            <div className="w-full max-w-5xl mx-auto h-[calc(100vh-60px)] flex flex-col md:grid md:grid-cols-12 gap-2 p-2 md:p-4 overflow-hidden relative">
                 
+                {/* MODAL OVERLAY */}
+                {activeCombatMenu && (
+                    <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                        <div className="w-full max-w-md bg-black border border-emerald-500/50 p-1 shadow-[0_0_20px_rgba(0,0,0,0.8)] relative">
+                             {/* Header */}
+                             <div className="flex justify-between items-center bg-zinc-900 p-2 border-b border-zinc-800 mb-2">
+                                <h3 className={`font-bold tracking-widest ${activeCombatMenu === 'OFFENSE' ? 'text-rose-500' : 'text-sky-500'}`}>
+                                    {activeCombatMenu === 'OFFENSE' ? 'ATTACK SUBROUTINES' : 'DEFENSE PROTOCOLS'}
+                                </h3>
+                                <button onClick={() => setActiveCombatMenu(null)} className="text-zinc-500 hover:text-white">
+                                    [X]
+                                </button>
+                             </div>
+                             
+                             <div className="p-2 max-h-[60vh] overflow-y-auto">
+                                {activeCombatMenu === 'OFFENSE' ? renderActionList(offensiveLoadout) : renderActionList(defensiveLoadout)}
+                             </div>
+
+                             <div className="text-[10px] text-zinc-600 font-mono text-center p-2 border-t border-zinc-900 mt-2">
+                                SELECT PROTOCOL TO EXECUTE
+                             </div>
+                        </div>
+                        {/* Click outside to close */}
+                        <div className="absolute inset-0 -z-10" onClick={() => setActiveCombatMenu(null)}></div>
+                    </div>
+                )}
+
                 {/* Left Col: Stats - Mobile: Top (Order 1), Desktop: Left (Order 1) */}
                 <div className="md:col-span-4 flex flex-col gap-2 order-1 md:order-1 shrink-0">
                     {/* Enemy Card */}
@@ -1075,51 +1167,36 @@ export default function App() {
                         <div ref={logsEndRef} />
                     </div>
 
-                    {/* Controls (Deck) - Takes remaining space */}
-                    <div className="flex-1 overflow-y-auto min-h-0 pr-1">
-                        <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
-                            {user.loadout.map(id => {
-                                const sw = SOFTWARE_DB[id];
-                                const canAfford = player.ap >= sw.cost;
-                                const onCooldown = (player.cooldowns[id] || 0) > 0;
-                                const disabled = !isPlayerTurn || !canAfford || onCooldown;
-                                
-                                // Check for effective bonus
-                                const isEffective = sw.bonuses && enemy.profileId && sw.bonuses.includes(enemy.profileId);
+                    {/* Controls (Category Buttons) */}
+                    <div className="flex-1 min-h-0 flex flex-col justify-end pb-2">
+                        <div className="grid grid-cols-2 gap-4 h-full md:max-h-60">
+                            <button
+                                onClick={() => setActiveCombatMenu('OFFENSE')}
+                                disabled={!isPlayerTurn || offensiveLoadout.length === 0}
+                                className={`
+                                    flex flex-col items-center justify-center border-2 border-rose-900/80 bg-rose-950/10 
+                                    hover:bg-rose-900/20 hover:border-rose-500 transition-all active:scale-[0.98] group
+                                    disabled:opacity-30 disabled:grayscale
+                                `}
+                            >
+                                <span className="text-3xl mb-2 opacity-50 group-hover:opacity-100 group-hover:scale-110 transition-all">⚔️</span>
+                                <span className="font-bold text-xl text-rose-500 tracking-widest">ATTACK</span>
+                                <span className="text-xs text-rose-800 font-mono mt-1">{offensiveLoadout.length} PROTOCOLS</span>
+                            </button>
 
-                                return (
-                                    <button 
-                                        key={id}
-                                        onClick={() => useSoftware(id)}
-                                        disabled={disabled}
-                                        className={`
-                                            relative border p-2 flex flex-col justify-between transition-all duration-100 min-h-20
-                                            ${disabled ? 'opacity-50 bg-zinc-900 border-zinc-800' : 'bg-black border-emerald-600 hover:bg-emerald-900/20 hover:scale-[1.02] active:scale-95 cursor-pointer'}
-                                        `}
-                                    >
-                                        <div className="flex justify-between items-start">
-                                            <span className={`text-[10px] md:text-xs font-bold ${canAfford ? 'text-white' : 'text-rose-500'}`}>{sw.name}</span>
-                                            <span className="text-[9px] font-mono border border-current px-1">{sw.cost}</span>
-                                        </div>
-                                        <div className="hidden md:block text-[9px] text-zinc-400 leading-tight mt-1">{sw.desc}</div>
-                                        
-                                        {isEffective && !disabled && (
-                                            <div className="absolute -top-1 -right-1">
-                                                <span className="relative flex h-2 w-2">
-                                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                                                </span>
-                                            </div>
-                                        )}
-
-                                        {onCooldown && (
-                                            <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-[1px]">
-                                                <span className="text-xl font-bold text-rose-500">{player.cooldowns[id]}</span>
-                                            </div>
-                                        )}
-                                    </button>
-                                )
-                            })}
+                            <button
+                                onClick={() => setActiveCombatMenu('DEFENSE')}
+                                disabled={!isPlayerTurn || defensiveLoadout.length === 0}
+                                className={`
+                                    flex flex-col items-center justify-center border-2 border-sky-900/80 bg-sky-950/10 
+                                    hover:bg-sky-900/20 hover:border-sky-500 transition-all active:scale-[0.98] group
+                                    disabled:opacity-30 disabled:grayscale
+                                `}
+                            >
+                                <span className="text-3xl mb-2 opacity-50 group-hover:opacity-100 group-hover:scale-110 transition-all">🛡️</span>
+                                <span className="font-bold text-xl text-sky-500 tracking-widest">DEFENSE</span>
+                                <span className="text-xs text-sky-800 font-mono mt-1">{defensiveLoadout.length} PROTOCOLS</span>
+                            </button>
                         </div>
                     </div>
                 </div>
