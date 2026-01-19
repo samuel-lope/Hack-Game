@@ -1022,7 +1022,7 @@ export default function App() {
                     </Panel>
 
                     {/* Live Patching */}
-                    <Panel borderColor="border-amber-900/50" title={t.game.livePatch} className="text-center">
+                    <Panel borderColor="border-amber-900/50" className="text-center">
                         <div className="flex gap-2">
                             {[
                                 { id: 'offense', label: t.game.atk, color: 'text-rose-400', border: 'border-rose-900' },
@@ -1178,4 +1178,3 @@ export default function App() {
         </div>
     );
 }
-
